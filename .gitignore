@@ -1,0 +1,10 @@
+# 依赖与构建产物（本仓库只放源码）
+node_modules/
+dist/
+*.log
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
