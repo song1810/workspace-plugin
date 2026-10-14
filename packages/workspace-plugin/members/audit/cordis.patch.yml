@@ -1,0 +1,3 @@
+- insert:
+    - id: workspace-audit
+      name: workspace-plugin-audit

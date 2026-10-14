@@ -1,0 +1,7 @@
+packages:
+  - packages/*
+  - packages/plugins/*
+  - packages/providers/*
+  - packages/workspace-plugin/members/*
+  - examples/*
+  - '!examples/univer-browser-edit'

@@ -1,0 +1,9 @@
+- insert:
+    - id: workspace-access
+      name: workspace-plugin-access
+    - id: workspace-session-access
+      name: workspace-plugin-access/session
+    - id: workspace-tool-access
+      name: workspace-plugin-access/tool
+      config:
+        autoBindPersonalSessions: true

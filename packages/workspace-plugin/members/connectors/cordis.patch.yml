@@ -1,0 +1,3 @@
+- insert:
+    - id: workspace-connectors
+      name: workspace-plugin-connectors
