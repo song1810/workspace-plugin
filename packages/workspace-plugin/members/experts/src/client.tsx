@@ -14,6 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client';
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client';
 import type {} from '@deepseek-ai/dsh-client-ui-slots';
 import { ExpertsPanel } from './client/ExpertsPanel.js';
+import { installExpertPresetCancel } from './client/ExpertPresetCancel.js';
 import { PendingExpertDraft, pendingExpertDraftKey, pendingExpertDraftEvent, expertManagerGuide, expertTeamManagerGuide } from './client/drafts.js';
 import { createExpertManagementClient } from './client/management.js';
 
@@ -50,6 +51,7 @@ export function apply(ctx: Context): void {
   const sessions = ctx.sessions as unknown as ISessions;
   const management = createExpertManagementClient(ctx, lifetime.signal);
   installExpertPresetMenu(ctx, management);
+  installExpertPresetCancel(ctx);
   ctx.inject(['activityPresentation'], (scope) => scope.effect(() => scope.activityPresentation.registerIdentity(async (sessionId, signal) => {
     // Official Team member conversations are continuable child Sessions. Their
     // immutable expert binding belongs to the Lead Session, exactly like the
