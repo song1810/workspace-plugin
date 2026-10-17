@@ -16,6 +16,10 @@ export function registerExpertExecutionGuard(ctx: Context): void {
     const membership = ctx.agentTeams.tryMembership(agent);
     const root = membership?.root ?? agent;
     const header = agent.session.header;
+    // A summoned expert can be dismissed before the first turn, which switches
+    // the still-blank Session back to a native preset. Such a Session is no
+    // longer an expert execution, so the binding no longer governs it.
+    if (!header.agentPreset?.startsWith('wd-exp-')) return;
     const actor = await ctx.workspaceIdentity.resolve({ sessionId: String(root.id) }, signal);
     let role;
     try {
@@ -29,7 +33,7 @@ export function registerExpertExecutionGuard(ctx: Context): void {
       // this creation edge; agent/pre-step below still requires the recovered
       // root binding and rejects a genuinely unbound expert child.
       if (unbound && creating && !membership && header.parentSession) return;
-      if (unbound && (!header.agentPreset?.startsWith('wd-exp-') || creating && root === agent && !header.parentSession)) return;
+      if (unbound && creating && root === agent && !header.parentSession) return;
       throw error;
     }
     if (role.binding.presetRevisionRef !== header.agentPreset) throw new ExpertsError('experts/conflict', '原生任务 preset 与固定专家组合不一致。');

@@ -56,6 +56,11 @@ export function apply(ctx: Context): void {
     // official Team Client resolves its panel through parentSessionId. alpha.2:
     // read the discovered address off the controller instead of borrowing a binding.
     const rootSessionId = (sessions.subagentAddress(sessionId as SessionId)?.parentSessionId ?? sessionId) as SessionId;
+    // Dismissing a summoned expert switches the blank Session to a native
+    // preset while its immutable binding record remains. Identity follows the
+    // Session's actual preset, so a dismissed Session is no longer an expert.
+    const rootPreset = sessions.list.getSnapshot().byId[rootSessionId]?.projectionValues?.agentPreset;
+    if (typeof rootPreset !== 'string' || !rootPreset.startsWith('wd-exp-')) return undefined;
     const binding = await management.verifyBinding(rootSessionId, signal);
     const detail = await management.get(binding.expertRevisionRef.expertId, binding.expertRevisionRef.revisionId, signal);
     const definition = detail.revision?.definition;
