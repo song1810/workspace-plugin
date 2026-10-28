@@ -139,6 +139,8 @@ export function createExpertManagementClient(ctx: Context, lifetime?: AbortSigna
       invoke<ExpertPreference>('set-preference', { expertId, pinned, ...(expectedRevision === undefined ? {} : { expectedRevision }) }, signal),
     setDisplayName: (expertId: string, displayName: string, signal?: AbortSignal) =>
       invoke<ExpertPreference>('set-preference', { expertId, displayName }, signal),
+    setTags: (expertId: string, tags: readonly string[], signal?: AbortSignal) =>
+      invoke<ExpertPreference>('set-preference', { expertId, tags }, signal),
     deleteExpert: (expertId: string, signal?: AbortSignal) =>
       invoke<{ expertId: string; removedSkills: readonly string[] }>('delete', { expertId }, signal),
     /** Materialize the export package into a per-expert folder and return its path. */

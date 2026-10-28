@@ -232,8 +232,9 @@ async function dispatch(manager: ExpertsService, actor: ActorContext, rawEndpoin
         const expertId = str(input?.expertId);
         const pinned = bool(input?.pinned);
         const displayName = str(input?.displayName);
-        if (!expertId || (pinned === undefined && displayName === undefined)) return fail('experts/invalid-request', '偏好设置请求无效。');
-        return ok(await manager.setPreference(actor, expertId, pinned, str(input?.expectedRevision), displayName, signal));
+        const tags = input?.tags === undefined ? undefined : strArray(input.tags);
+        if (!expertId || (pinned === undefined && displayName === undefined && input?.tags === undefined) || (input?.tags !== undefined && tags === undefined)) return fail('experts/invalid-request', '偏好设置请求无效。');
+        return ok(await manager.setPreference(actor, expertId, pinned, str(input?.expectedRevision), displayName, signal, tags));
       }
       case 'prepare-execution': {
         const expertId = str(input?.expertId);

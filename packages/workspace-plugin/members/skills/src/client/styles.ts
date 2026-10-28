@@ -199,9 +199,10 @@ export const skillsMarketCss = `${modalCss}
 .catalog-dialog .validation-errors .muted{color:var(--dsw-alias-label-tertiary)}
 @media(max-width:1400px){.wd-skills .market-card .muted{font-size:12px}}
 
-.wd-skills .skill-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
-.wd-skills .skill-tags span{padding:3px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}
-.wd-skills .tag-filter{width:auto;min-width:100px;max-width:180px}
+.wd-skills .tag-filter-bar{display:flex;gap:22px;align-items:center;overflow-x:auto;margin:0 0 18px;padding:0 0 10px;border-bottom:1px solid var(--dsw-alias-border-l2)}
+.wd-skills .tag-filter-bar button{border:0;background:transparent;color:var(--dsw-alias-label-tertiary);white-space:nowrap;padding:4px 0;min-height:28px}
+.wd-skills .tag-filter-bar button:hover:not(:disabled){background:transparent;color:var(--dsw-alias-label-primary)}
+.wd-skills .tag-filter-bar button.active{color:var(--dsw-alias-label-primary);font-weight:600}
 .wd-skills .installed-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .tag-editor{display:grid;gap:10px;margin:16px 0}
 .tag-editor-head{display:flex;align-items:baseline;gap:10px}

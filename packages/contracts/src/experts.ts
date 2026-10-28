@@ -171,6 +171,8 @@ export interface ExpertSummary {
   readonly expertType?: 'agent' | 'team';
   readonly profession?: string;
   readonly tags?: readonly string[];
+  /** Per-user labels assigned at import/display-name settings; never package metadata. */
+  readonly userTags?: readonly string[];
   readonly id: string;
   readonly name: string;
   readonly description: string;
@@ -198,6 +200,7 @@ export interface ExpertDetail {
   readonly canUse: boolean;
   readonly canEdit: boolean;
   readonly canManage: boolean;
+  readonly userTags?: readonly string[];
 }
 
 /** Durable Session → expert-revision binding. Reserved before task creation; never re-bound. */
@@ -227,6 +230,8 @@ export interface ExpertPreference {
   readonly pinned: boolean;
   /** Per-user card title; never changes the expert's own identity. */
   readonly displayName?: string;
+  /** Per-user labels shown by the list filter; package definition tags stay separate. */
+  readonly tags?: readonly string[];
   readonly lastUsedAt?: string;
   readonly revision: string;
 }
@@ -432,7 +437,7 @@ export interface ExpertsService {
   confirmPublish(actor: ActorContext, confirmationToken: string, signal?: AbortSignal): Promise<ConfirmationProof>;
   publish(actor: ActorContext, expertId: string, draftRevision: string, dependencyLockDigest: string, proof: ConfirmationProof, context: MutationContext, signal?: AbortSignal): Promise<PublishReceipt>;
   setAvailability(actor: ActorContext, expertId: string, availability: ExpertAvailability, context: MutationContext, proof?: ConfirmationProof, signal?: AbortSignal): Promise<AvailabilityReceipt>;
-  setPreference(actor: ActorContext, expertId: string, pinned: boolean | undefined, expectedRevision?: string, displayName?: string, signal?: AbortSignal): Promise<ExpertPreference>;
+  setPreference(actor: ActorContext, expertId: string, pinned: boolean | undefined, expectedRevision?: string, displayName?: string, signal?: AbortSignal, tags?: readonly string[]): Promise<ExpertPreference>;
   /** Physically delete an expert or team, with its revisions and the skills its package installed. */
   deleteExpert(actor: ActorContext, expertId: string, signal?: AbortSignal): Promise<{ expertId: string; removedSkills: readonly string[] }>;
   prepareExecution(actor: ActorContext, expertId: string, revisionId: string | undefined, workspaceRef: string | undefined, modelSelection: ModelSelectionRequest | undefined, draftText: string | undefined, signal?: AbortSignal, workspaceId?: string): Promise<ExecutionPlan>;

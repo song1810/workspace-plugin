@@ -15,7 +15,6 @@ export type ExpertDraftEditorProps = {
   readonly onSaved: () => void;
   readonly onPublished: () => void;
   readonly onSummon: (expertId: string, revisionId: string | undefined, draftText: string | undefined) => void;
-  readonly tagOptions?: readonly string[];
 };
 
 type ExampleRow = { id: string; title: string; prompt: string };
@@ -66,7 +65,7 @@ function Counter({ value, max }: { value: number; max: number }) {
   return <span className={`counter ${value > max ? 'field-error' : ''}`}>{value}/{max}</span>;
 }
 
-export function ExpertDraftEditor({ expertId, management, onClose, onSaved, onPublished, onSummon, tagOptions = [] }: ExpertDraftEditorProps) {
+export function ExpertDraftEditor({ expertId, management, onClose, onSaved, onPublished, onSummon }: ExpertDraftEditorProps) {
   const [form, setForm] = useState<FormState>();
   const [selectedFile, setSelectedFile] = useState('');
   const [baseline, setBaseline] = useState('');
@@ -243,21 +242,6 @@ export function ExpertDraftEditor({ expertId, management, onClose, onSaved, onPu
           <label htmlFor="ex-desc">简介 <Counter value={form.description.length} max={EXPERT_LIMITS.descriptionMax} /></label>
           <Textarea id="ex-desc" value={form.description} onChange={event => set('description', event.currentTarget.value)} placeholder="一句话说明这个专家能帮你做什么" />
           {descInvalid && <p className="field-error">简介不超过 {EXPERT_LIMITS.descriptionMax} 个字符。</p>}
-        </div>
-        <div className="field">
-          <label>标签（最多 {EXPERT_LIMITS.tagsMax} 个，每个 ≤20 字）</label>
-          <div className="list-editor tag-editor">
-            {form.tags.map((tag, index) => <div className="list-row" key={index}>
-              <Input value={tag} maxLength={20} aria-label={`标签 ${index + 1}`} onChange={event => set('tags', form.tags.map((t, i) => (i === index ? event.currentTarget.value : t)))} />
-              <Button variant="ghost" size="sm" className="remove" aria-label={`删除标签 ${index + 1}`} onClick={() => set('tags', form.tags.filter((_, i) => i !== index))}>删除</Button>
-            </div>)}
-            {form.tags.length < EXPERT_LIMITS.tagsMax && <Button className="add-row" onClick={() => set('tags', [...form.tags, ''])}>+ 添加标签</Button>}
-            {form.tags.length < EXPERT_LIMITS.tagsMax && tagOptions.some(tag => !form.tags.includes(tag)) && <Select aria-label="从已有标签选择" value="" onChange={event => {
-              const tag = event.currentTarget.value;
-              if (tag && !form.tags.includes(tag)) set('tags', [...form.tags, tag]);
-              event.currentTarget.value = '';
-            }}><option value="">从已有标签选择</option>{tagOptions.filter(tag => !form.tags.includes(tag)).map(tag => <option key={tag} value={tag}>{tag}</option>)}</Select>}
-          </div>
         </div>
       </section>
 

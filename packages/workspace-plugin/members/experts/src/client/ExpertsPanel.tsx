@@ -1,4 +1,4 @@
-import { Button, Input, Select } from 'workspace-ui';
+import { Button, Input } from 'workspace-ui';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // The `main` slot PropsRuntime is augmented by the official layout client module;
@@ -6,12 +6,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client';
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import { Icon, Modal, type IconName } from 'workspace-ui';
-import type { ExpertAvailability, ExpertSummary } from '../shared.js';
+import { EXPERT_LIMITS, type ExpertAvailability, type ExpertSummary } from '../shared.js';
 import type { ExpertManagementClient } from './management.js';
 import { ExpertDetailModal } from './ExpertDetailModal.js';
 import { expertDraftId } from '../domain/navigation.js';
 import { ExpertDraftEditor } from './ExpertDraftEditor.js';
 import { ImportExpertModal } from './ImportExportModals.js';
+import { TagEditor } from './TagEditor.js';
 import { expertsCss } from './styles.js';
 
 type ExpertsPanelInjected = {
@@ -67,7 +68,7 @@ export function ExpertsPanel({ toggleNavigation, management, openCapability, has
   const [detailId, setDetailId] = useState<string>();
   const [editorId, setEditorId] = useState<string | undefined>(() => expertDraftId(window.location.search));
   const [importOpen, setImportOpen] = useState(false);
-  const [rename, setRename] = useState<{ id: string; value: string } | undefined>(undefined);
+  const [rename, setRename] = useState<{ id: string; value: string; tags: string[] } | undefined>(undefined);
   const [removeTarget, setRemoveTarget] = useState<string | undefined>(undefined);
   const [actionMenu, setActionMenu] = useState<string>();
   const [acting, setActing] = useState(false);
@@ -139,11 +140,11 @@ export function ExpertsPanel({ toggleNavigation, management, openCapability, has
     if (stateFilter === 'published') return items.filter(item => item.publishedRevisionRef !== undefined);
     return items;
   }, [items, view, stateFilter]);
-  const allTags = useMemo(() => [...new Set(items.flatMap(item => item.tags ?? []))].sort((a, b) => a.localeCompare(b)), [items]);
-  const visibleTags = useMemo(() => [...new Set(baseVisible.flatMap(item => item.tags ?? []))].sort((a, b) => a.localeCompare(b)), [baseVisible]);
+  const allTags = useMemo(() => [...new Set(items.flatMap(item => item.userTags ?? []))].sort((a, b) => a.localeCompare(b)), [items]);
+  const visibleTags = useMemo(() => [...new Set(baseVisible.flatMap(item => item.userTags ?? []))].sort((a, b) => a.localeCompare(b)), [baseVisible]);
   useEffect(() => { if (tagFilter !== 'all' && !visibleTags.includes(tagFilter)) setTagFilter('all'); }, [tagFilter, visibleTags]);
   useEffect(() => { setTagFilter('all'); }, [view, kind, debounced, stateFilter, originFilter]);
-  const visible = tagFilter === 'all' ? baseVisible : baseVisible.filter(item => item.tags?.includes(tagFilter));
+  const visible = tagFilter === 'all' ? baseVisible : baseVisible.filter(item => item.userTags?.includes(tagFilter));
 
   const refresh = useCallback(() => { void load(); void loadMineCount(); }, [load, loadMineCount]);
   const closeEditor = () => {
@@ -224,14 +225,15 @@ export function ExpertsPanel({ toggleNavigation, management, openCapability, has
     <div className="section-head">
       <nav className="work-types" aria-label={view === 'mine' ? '我的作品类型' : '专家中心类型'}>{([['agent', '专家'], ['team', '专家团']] as const).map(([type, label]) => <button key={type} className={kind === type ? 'active' : ''} aria-pressed={kind === type} onClick={() => { setKind(type); setQuery(''); }}>{label}{view === 'mine' && <span>{typeCounts[type]}</span>}</button>)}</nav>
       <div className="section-actions">
-        <Select className="tag-filter" aria-label="按标签筛选" value={tagFilter} onChange={event => setTagFilter(event.currentTarget.value)}>
-          <option value="all">全部</option>
-          {visibleTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
-        </Select>
         <Button onClick={() => setImportOpen(true)}>导入</Button>
         <Button onClick={refresh} disabled={busy}>刷新</Button>
       </div>
     </div>
+
+    <nav className="tag-filter-bar" aria-label="按标签筛选">
+      <button className={tagFilter === 'all' ? 'active' : ''} onClick={() => setTagFilter('all')}>全部</button>
+      {visibleTags.map(tag => <button key={tag} className={tagFilter === tag ? 'active' : ''} onClick={() => setTagFilter(tag)}>{tag}</button>)}
+    </nav>
 
     {view === 'mine' && <nav className="filter-tabs" aria-label="状态过滤">
         {([['all', '全部'], ['draft', '草稿'], ['published', '已发布'], ['disabled', '已停用'], ['archived', '已归档']] as const).map(([key, label]) =>
@@ -270,7 +272,6 @@ export function ExpertsPanel({ toggleNavigation, management, openCapability, has
               </button>
             </div>
             <p className="desc">{summary.description || <span className="muted">（暂无简介）</span>}</p>
-            {summary.tags?.length ? <div className="tag-list">{summary.tags.map(tag => <span key={tag}>{tag}</span>)}</div> : null}
             <div className="card-foot"><button className="summon" disabled={!usable || acting} onClick={() => void runSummon(summary.id, summary.publishedRevisionRef?.revisionId, undefined)}>召唤</button>
               {/* The kind is already the tab you are looking at, and "可用" is the absence of
                   news; only a real problem still earns a badge here. */}
@@ -287,7 +288,7 @@ export function ExpertsPanel({ toggleNavigation, management, openCapability, has
                   {summary.canEdit && !draft && <button role="menuitem" onClick={() => { void editInConversation(summary.id); }}>编辑</button>}
                   <button role="menuitem" disabled={acting} onClick={() => void openDirectory(summary)}>打开文件夹</button>
                   <button role="menuitem" disabled={acting} onClick={() => void exportExpert(summary)}>导出</button>
-                  <button role="menuitem" disabled={acting} onClick={() => { setActionMenu(undefined); setRename({ id: summary.id, value: summary.displayName ?? '' }); }}>设置显示名称</button>
+                  <button role="menuitem" disabled={acting} onClick={() => { setActionMenu(undefined); setRename({ id: summary.id, value: summary.displayName ?? '', tags: [...(summary.userTags ?? [])] }); }}>设置显示名称</button>
                   {summary.canManage && summary.availability === 'disabled' && <button role="menuitem" disabled={acting} onClick={() => void setAvailability(summary, 'enabled')}>启用</button>}
 
                   {summary.canManage && <button className="danger" role="menuitem" disabled={acting} onClick={() => { setActionMenu(undefined); setRemoveTarget(summary.id); }}>卸载</button>}
@@ -325,13 +326,13 @@ export function ExpertsPanel({ toggleNavigation, management, openCapability, has
         onChanged={refresh} />}
     </Modal>
 
-    {editorId && <ExpertDraftEditor expertId={editorId} management={management} tagOptions={allTags}
+    {editorId && <ExpertDraftEditor expertId={editorId} management={management}
       onClose={closeEditor}
       onSaved={refresh}
       onPublished={() => { closeEditor(); refresh(); }}
       onSummon={(id, revisionId, text) => { closeEditor(); void runSummon(id, revisionId, text); }} />}
 
-    <Modal open={rename !== undefined} label="设置显示名称" className="confirm-dialog" onClose={() => setRename(undefined)}>{rename && <div><h2>设置显示名称</h2><p className="muted">只影响你自己的卡片显示，不会改变专家本身的标识。</p><input className="rename-input" autoFocus value={rename.value} placeholder="留空则恢复原名称" onChange={event => setRename({ ...rename, value: event.currentTarget.value })} /><div className="confirm-actions"><Button onClick={() => setRename(undefined)}>取消</Button><Button variant="primary" onClick={() => { const target = rename; void (async () => { try { await management.setDisplayName(target.id, target.value); setRename(undefined); await refresh(); } catch (cause) { setError(messageOf(cause)); } })(); }}>保存</Button></div></div>}</Modal>
+    <Modal open={rename !== undefined} label="设置显示名称" className="confirm-dialog" onClose={() => setRename(undefined)}>{rename && <div><h2>设置显示名称</h2><p className="muted">只影响你自己的卡片显示和标签筛选，不会改变专家本身的内容。</p><TagEditor tags={rename.tags} options={allTags} onChange={tags => setRename({ ...rename, tags })} max={EXPERT_LIMITS.tagsMax} /><input className="rename-input" autoFocus value={rename.value} placeholder="留空则恢复原名称" onChange={event => setRename({ ...rename, value: event.currentTarget.value })} /><div className="confirm-actions"><Button onClick={() => setRename(undefined)}>取消</Button><Button variant="primary" onClick={() => { const target = rename; void (async () => { try { await management.setDisplayName(target.id, target.value); await management.setTags(target.id, target.tags); setRename(undefined); await refresh(); } catch (cause) { setError(messageOf(cause)); } })(); }}>保存</Button></div></div>}</Modal>
     <Modal open={removeTarget !== undefined} label="确认卸载专家" className="confirm-dialog" onClose={() => setRemoveTarget(undefined)}>{removeTarget && <div><h2>卸载这位专家？</h2><p className="muted">将删除它的草稿、全部已发布修订、随包安装的技能，以及所有人的显示偏好。此操作不可恢复。</p><p className="muted">如果已有会话使用该专家/专家团，必须先删除相关会话。</p><div className="confirm-actions"><Button onClick={() => setRemoveTarget(undefined)}>取消</Button><Button tone="danger" className="danger solid" onClick={() => { const target = removeTarget; void (async () => { try { await management.deleteExpert(target); setRemoveTarget(undefined); await refresh(); } catch (cause) { setError(messageOf(cause)); } })(); }}>确认卸载</Button></div></div>}</Modal>
     <Modal open={importOpen} label="导入专家" className="import-dialog" onClose={() => setImportOpen(false)}>
       {importOpen && <ImportExpertModal management={management} existingTags={allTags} onClose={() => setImportOpen(false)}

@@ -99,6 +99,19 @@ declare module '@deepseek-ai/cordis' {
 }
 
 const EXPERT_DOMAIN = 'workspace-experts';
+
+function normalizeUserTags(tags: readonly string[] | undefined): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of tags ?? []) {
+    const tag = raw.trim();
+    if (!tag || tag.length > 20 || seen.has(tag)) continue;
+    seen.add(tag);
+    result.push(tag);
+    if (result.length >= EXPERT_LIMITS.tagsMax) break;
+  }
+  return result;
+}
 const PLAN_TTL_MS = 10 * 60 * 1000;
 const HANDOFF_TTL_MS = 10 * 60 * 1000;
 const STAGED_IMPORT_PATTERN = /^[a-z0-9-]{1,64}$/;
@@ -620,6 +633,7 @@ export class ExpertsManager extends Service implements ExpertsService {
       canManage: caps.canManage,
       readiness,
       pinned: preference?.pinned ?? false,
+      ...(preference?.tags === undefined ? {} : { userTags: preference.tags }),
       ...(preference?.lastUsedAt === undefined ? {} : { lastUsedAt: preference.lastUsedAt }),
       ...(preference?.displayName === undefined ? {} : { displayName: preference.displayName }),
       updatedAt: expert.updatedAt,
@@ -750,12 +764,14 @@ export class ExpertsManager extends Service implements ExpertsService {
     const revision = targetRevisionId === undefined ? undefined : this.loadRevision(expertId, targetRevisionId);
     const readiness = await this.computeReadiness(revision, actor, signal);
     const caps = this.capabilities(actor, expert);
+    const preference = this.preferenceFor(actor, expertId);
     await this.audit(actor, 'experts.get', expertId, 'succeeded', 'experts/get-succeeded');
     return {
       expert, draft,
       ...(revision === undefined ? {} : { revision }),
       readiness,
       canUse: caps.canUse, canEdit: caps.canEdit, canManage: caps.canManage,
+      ...(preference?.tags === undefined ? {} : { userTags: preference.tags }),
     };
   }
 
@@ -1287,7 +1303,7 @@ export class ExpertsManager extends Service implements ExpertsService {
     });
   }
 
-  async setPreference(actor: ActorContext, expertId: string, pinned: boolean | undefined, expectedRevision?: string, displayName?: string, signal?: AbortSignal): Promise<ExpertPreference> {
+  async setPreference(actor: ActorContext, expertId: string, pinned: boolean | undefined, expectedRevision?: string, displayName?: string, signal?: AbortSignal, tags?: readonly string[]): Promise<ExpertPreference> {
     signal?.throwIfAborted();
     assertActorContext(actor);
     await this.ensureSeeded(actor, signal);
@@ -1304,10 +1320,12 @@ export class ExpertsManager extends Service implements ExpertsService {
       }
       // An omitted displayName keeps whatever the user set before; an empty one clears it.
       const chosenName = displayName === undefined ? existing?.displayName : displayName.trim();
+      const chosenTags = tags === undefined ? existing?.tags : normalizeUserTags(tags);
       const next: ExpertPreference = {
         principalId: actor.principalId, expertId, pinned: pinned ?? existing?.pinned ?? false,
         ...(existing?.lastUsedAt === undefined ? {} : { lastUsedAt: existing.lastUsedAt }),
         ...(chosenName ? { displayName: chosenName } : {}),
+        ...(chosenTags === undefined ? {} : { tags: chosenTags }),
         revision: `p-${randomUUID()}`,
       };
       await table.put(key, next);
@@ -1324,6 +1342,8 @@ export class ExpertsManager extends Service implements ExpertsService {
     const next: ExpertPreference = {
       principalId: actor.principalId, expertId,
       pinned: existing?.pinned ?? false,
+      ...(existing?.displayName === undefined ? {} : { displayName: existing.displayName }),
+      ...(existing?.tags === undefined ? {} : { tags: existing.tags }),
       lastUsedAt: new Date().toISOString(),
       revision: `p-${randomUUID()}`,
     };

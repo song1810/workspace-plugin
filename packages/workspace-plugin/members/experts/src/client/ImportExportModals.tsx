@@ -34,7 +34,7 @@ export function ImportExpertModal({ management, existingTags, onClose, onImporte
       const staged = await management.stageImport(file);
       const result = await management.previewImport(staged.uploadedArtifactRef);
       setPreview(result);
-      setTags([...(result.candidate.tags ?? [])]);
+      setTags([]);
     } catch (cause) { setError(messageOf(cause)); }
     finally { setBusy(false); }
   };
@@ -44,10 +44,7 @@ export function ImportExpertModal({ management, existingTags, onClose, onImporte
     setBusy(true); setError('');
     try {
       const draft = await management.commitImport(preview.importPlanId, preview.previewDigest, management.newOperationId('commit-import'));
-      const originalTags = preview.candidate.tags ?? [];
-      if (tags.join('\0') !== originalTags.join('\0')) {
-        await management.updateDraft(draft.expertId, { tags }, management.newOperationId('import-tags'), draft.revision);
-      }
+      await management.setTags(draft.expertId, tags);
       onImported(draft.expertId);
     } catch (cause) { setError(messageOf(cause)); setBusy(false); }
   };

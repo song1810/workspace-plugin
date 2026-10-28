@@ -247,7 +247,7 @@ export class SkillManager extends Service implements SkillManagementService {
     for (const row of rows) {
       const entry = metadata.get(row.name);
       const owned = await this.installedRecord(row.name);
-      const tags = owned && Object.prototype.hasOwnProperty.call(owned, 'tags') ? owned.tags : entry?.categories;
+      const tags = owned?.tags;
       merged.push({
         ...(entry ? { ...row, ...entry } : row),
         ...(owned?.title ? { title: owned.title } : {}),
@@ -264,7 +264,7 @@ export class SkillManager extends Service implements SkillManagementService {
     const entry = metadata.get(detail.name);
     const owned = await this.installedRecord(detail.name);
     const withCatalog = entry ? { ...detail, ...entry } : detail;
-    const tags = owned && Object.prototype.hasOwnProperty.call(owned, 'tags') ? owned.tags : entry?.categories;
+    const tags = owned?.tags;
     return {
       ...withCatalog,
       ...(owned?.title ? { title: owned.title } : {}),

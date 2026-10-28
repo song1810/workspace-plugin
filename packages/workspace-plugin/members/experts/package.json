@@ -1,6 +1,6 @@
 {
   "name": "workspace-plugin-experts",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "private": false,
   "type": "module",
   "description": "Local expert management plugin for DeepSeek Harness (D04 / P1-02, expert module 0.1)",

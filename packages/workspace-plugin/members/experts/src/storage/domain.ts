@@ -106,6 +106,8 @@ const preferenceSchema: z.ZodType<ExpertPreference> = z.object({
   principalId: bounded,
   expertId: bounded,
   pinned: z.boolean(),
+  displayName: bounded.optional(),
+  tags: z.array(bounded).max(20).optional(),
   lastUsedAt: iso.optional(),
   revision: bounded,
 });
