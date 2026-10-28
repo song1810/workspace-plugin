@@ -5,10 +5,12 @@ import { useEffect, useRef, useState } from 'react';
 import { zipSync } from 'fflate';
 import type { SkillInstallScope, StagedSkillImport } from '../shared.js';
 import type { SkillManagementClient } from './management.js';
+import { TagEditor } from './TagEditor.js';
 
 type ImportSkillModalProps = {
   readonly open: boolean;
   readonly management: SkillManagementClient;
+  readonly existingTags: readonly string[];
   readonly onClose: () => void;
   readonly onInstalled: (name: string) => Promise<void> | void;
 };
@@ -35,10 +37,11 @@ async function packageSelection(files: FileList | readonly File[], signal: Abort
   return new File([zipSync(entries, { level: 6 })], 'skill-directory.zip', { type: 'application/zip' });
 }
 
-export function ImportSkillModal({ open, management, onClose, onInstalled }: ImportSkillModalProps) {
+export function ImportSkillModal({ open, management, existingTags, onClose, onInstalled }: ImportSkillModalProps) {
   const [staged, setStaged] = useState<StagedSkillImport>();
   const [scope, setScope] = useState<SkillInstallScope>('shared-agents');
   const [title, setTitle] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState('');
@@ -48,7 +51,7 @@ export function ImportSkillModal({ open, management, onClose, onInstalled }: Imp
 
   const discard = async () => {
     const current = staged;
-    setStaged(undefined); setError(''); setBusy(false); setDragging(false); setScope('shared-agents'); setTitle('');
+    setStaged(undefined); setError(''); setBusy(false); setDragging(false); setScope('shared-agents'); setTitle(''); setTags([]);
     if (current) await management.discardImport(current.id).catch(() => {});
   };
   const close = () => { operationAbort.current?.abort(); void discard(); onClose(); };
@@ -70,7 +73,7 @@ export function ImportSkillModal({ open, management, onClose, onInstalled }: Imp
     setBusy(true); setError('');
     const controller = new AbortController(); operationAbort.current?.abort(); operationAbort.current = controller;
     try {
-      const receipt = await management.commitImport(staged.id, scope, title, controller.signal);
+      const receipt = await management.commitImport(staged.id, scope, title, tags, controller.signal);
       setStaged(undefined);
       // Close the import layer before opening the installed skill detail. This
       // preserves one modal at a time and prevents the hidden import backdrop
@@ -104,6 +107,7 @@ export function ImportSkillModal({ open, management, onClose, onInstalled }: Imp
     </> : <section className="import-review" data-testid="skill-import-review">
       <div className="import-review-title"><span className="skill-mark" aria-hidden>{staged.inspection.name[0]}</span><div><h3>{staged.inspection.name}</h3><p>{staged.inspection.description}</p></div></div>
       <div className="import-title-field"><label htmlFor="skill-import-title">技能名称</label><Input id="skill-import-title" value={title} placeholder={staged.inspection.name} onChange={event => setTitle(event.currentTarget.value)} /><small className="muted">显示在卡片上的名字；留空则用技能自身的名称</small></div>
+      <TagEditor tags={tags} options={existingTags} onChange={setTags} />
       <dl><dt>来源文件</dt><dd>{staged.fileName}</dd><dt>文件</dt><dd>{staged.inspection.files.length} 个，{sizeOf(staged.inspection.totalBytes)}</dd><dt>安装范围</dt><dd>所有 Workspace 任务（共享）——装进 Harness 会扫描的用户技能目录，对话框里可用 / 调用</dd></dl>
       <details><summary>查看文件清单</summary><ul className="import-file-list">{staged.inspection.files.map(path => <li key={path}>{path}</li>)}</ul></details>
       <p className="import-note">预检已通过。确认后才会写入 Harness 官方技能目录；若已存在同名技能，安装会停止且不会覆盖。</p>

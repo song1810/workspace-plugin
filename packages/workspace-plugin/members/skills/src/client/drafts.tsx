@@ -5,7 +5,7 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 export type SkillTaskKind = 'create' | 'edit' | 'open' | 'disable' | 'enable' | 'uninstall';
 export const pendingDraftKey = 'workspace.pending-skill-task-draft';
 export const skillTaskDrafts = {
-  create: '/workspace-skill-creator 请帮我创建一个可以实现「……」的 skill',
+  create: '/workspace-skill-creator 请帮我创建一个可以实现「……」的 skill。保存草稿前，请根据技能用途设置 1-3 个标签，优先复用已有标签，也可新建；最终通过 workspace_save_skill_draft 的 tags 参数写入。',
 } as const;
 
 export function skillManagementDraft(kind: Exclude<SkillTaskKind, 'create'>, name: string): string {

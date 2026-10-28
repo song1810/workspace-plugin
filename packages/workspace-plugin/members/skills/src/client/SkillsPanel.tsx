@@ -1,4 +1,4 @@
-import { Button, Input, Textarea } from 'workspace-ui';
+import { Button, Input, Select, Textarea } from 'workspace-ui';
 import { Icon, Modal, type IconName } from 'workspace-ui';
 import * as React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -7,6 +7,7 @@ import type { ManagedSkillDetail, ManagedSkillResource, ManagedSkillSummary, Ski
 import type { SkillTaskKind } from './drafts.js';
 import type { SkillManagementClient } from './management.js';
 import { ImportSkillModal } from './ImportSkillModal.js';
+import { TagEditor } from './TagEditor.js';
 import { MarkdownDocument } from './markdown.js';
 import { skillsActionsCss, skillsCss, skillsMarketCss } from './styles.js';
 
@@ -66,6 +67,8 @@ export function SkillsPanel({ toggleNavigation, management, startSkillTask, star
   const [rename, setRename] = useState<{ name: string; value: string }>();
   const [view, setView] = useState<'market' | 'installed'>('market');
   const [installedQuery, setInstalledQuery] = useState('');
+  const [tagFilter, setTagFilter] = useState('all');
+  const [skillTags, setSkillTags] = useState<string[]>([]);
   const search = useRef<HTMLInputElement>(null);
   const addMenu = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLElement>(null);
@@ -121,7 +124,7 @@ export function SkillsPanel({ toggleNavigation, management, startSkillTask, star
   };
   const openDetail = async (name: string) => {
     setActionMenu(undefined); setError('');
-    try { const detail = await management.detail(name); setSelected(detail); setSkillDocument(detail.document ?? ''); setSkillTitle(detail.title ?? ''); setEditing(false); setResource(undefined); }
+    try { const detail = await management.detail(name); setSelected(detail); setSkillDocument(detail.document ?? ''); setSkillTitle(detail.title ?? ''); setSkillTags([...(detail.tags ?? [])]); setEditing(false); setResource(undefined); }
     catch (cause) { setError(messageOf(cause)); }
   };
   const beginSkillTask = async (kind: SkillTaskKind) => {
@@ -164,7 +167,7 @@ export function SkillsPanel({ toggleNavigation, management, startSkillTask, star
     // Only send the display name when the user actually changed it, so an untouched
     // field never rewrites the install record.
     const renamed = skillTitle.trim() !== (selected.title ?? '').trim();
-    try { const next = await management.update({ name: selected.name, document: skillDocument, expectedRevision: selected.revision, ...(renamed ? { title: skillTitle } : {}) }); setSelected(next); setSkillDocument(next.document ?? ''); setSkillTitle(next.title ?? ''); setEditing(false); await refresh(); }
+    try { const next = await management.update({ name: selected.name, document: skillDocument, expectedRevision: selected.revision, ...(renamed ? { title: skillTitle } : {}), tags: skillTags }); setSelected(next); setSkillDocument(next.document ?? ''); setSkillTitle(next.title ?? ''); setSkillTags([...(next.tags ?? [])]); setEditing(false); await refresh(); }
     catch (cause) { setError(messageOf(cause)); setBusy(false); }
   };
   const uninstall = async () => {
@@ -209,8 +212,8 @@ export function SkillsPanel({ toggleNavigation, management, startSkillTask, star
   };
   const toggleBatchSelection = (name: string) => setSelectedNames(current => current.includes(name) ? current.filter(item => item !== name) : [...current, name]);
   const toggleBatch = () => { setBatchMode(value => !value); setSelectedNames([]); };
-  const openInstalled = () => { setActionMenu(undefined); setError(''); setView('installed'); };
-  const returnToMarket = () => { setActionMenu(undefined); setView('market'); };
+  const openInstalled = () => { setActionMenu(undefined); setError(''); setTagFilter('all'); setView('installed'); };
+  const returnToMarket = () => { setActionMenu(undefined); setTagFilter('all'); setView('market'); };
   const runBatch = async (action: 'enable' | 'disable' | 'uninstall') => {
     if (!selectedNames.length) return;
     setBusy(true); setError('');
@@ -228,16 +231,28 @@ export function SkillsPanel({ toggleNavigation, management, startSkillTask, star
   const entries = catalog?.entries ?? [];
   const normalized = query.trim().toLowerCase();
   const matches = (text: string) => text.toLowerCase().includes(normalized);
-  const available = entries.filter(entry => !entry.installed && (matches(entry.name) || matches(entry.title) || matches(entry.description)));
-  const filtered = skills.filter(skill => matches(`${skill.name} ${skill.title ?? ''} ${skill.localizedDescription ?? skill.description} ${skill.whenToUse ?? ''}`));
-  const installedFiltered = skills.filter(skill => `${skill.name} ${skill.title ?? ''} ${skill.localizedDescription ?? skill.description} ${skill.whenToUse ?? ''}`.toLowerCase().includes(installedQuery.trim().toLowerCase()));
+  const installedTags = [...new Set(skills.flatMap(skill => skill.tags ?? []))].sort((a, b) => a.localeCompare(b));
+  const marketTags = [...new Set([...installedTags, ...entries.flatMap(entry => entry.categories)])].sort((a, b) => a.localeCompare(b));
+  const currentTags = view === 'installed' ? installedTags : marketTags;
+  const matchesTag = (tags: readonly string[]) => tagFilter === 'all' || tags.includes(tagFilter);
+  const available = entries.filter(entry => !entry.installed && matchesTag(entry.categories) && (matches(entry.name) || matches(entry.title) || matches(entry.description)));
+  const filtered = skills.filter(skill => matchesTag(skill.tags ?? []) && matches(`${skill.name} ${skill.title ?? ''} ${skill.localizedDescription ?? skill.description} ${skill.whenToUse ?? ''}`));
+  const installedFiltered = skills.filter(skill => matchesTag(skill.tags ?? []) && `${skill.name} ${skill.title ?? ''} ${skill.localizedDescription ?? skill.description} ${skill.whenToUse ?? ''}`.toLowerCase().includes(installedQuery.trim().toLowerCase()));
+  const tagKey = currentTags.join('\0');
+  useEffect(() => {
+    if (tagFilter !== 'all' && !currentTags.includes(tagFilter)) setTagFilter('all');
+  }, [tagFilter, tagKey]);
+  const tagFilterControl = <Select className="tag-filter" aria-label="按标签筛选" value={tagFilter} onChange={event => setTagFilter(event.currentTarget.value)}>
+    <option value="all">全部</option>
+    {currentTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
+  </Select>;
   const capabilityTabs = [['experts', '专家'], ['skills', '技能'], ['connectors', '连接器']] as const;
   const capabilityKey: Record<string, string> = { experts: 'workspace-experts', skills: 'workspace-skills', connectors: 'workspace-connectors' };
   const countsLine = <div role="status" aria-live="polite" className={error ? 'error counts' : notice ? 'notice counts' : 'muted counts'}>{busy ? '正在读取…' : error || notice || `共 ${skills.length} 个已安装技能 · 当前显示 ${view === 'installed' ? installedFiltered.length : filtered.length} 个`}</div>;
   const batchBar = <div className="batch-bar" role="toolbar" aria-label="批量管理技能"><span>已选择 {selectedNames.length} 项</span><Button tone="danger" className="danger" disabled={!selectedNames.length || busy} onClick={() => setConfirmBatchUninstall(true)}>卸载</Button></div>;
   const renderSkillCard = (skill: ManagedSkillSummary) => <article className={`card ${skill.state === 'disabled' ? 'disabled' : skill.state === 'invalid' ? 'invalid' : ''} ${actionMenu === skill.name ? 'menu-open' : ''}`} key={skill.name}>
     <div className="card-top">{batchMode && skill.manageable ? <button className="batch-check" role="checkbox" aria-checked={selectedNames.includes(skill.name)} aria-label={`选择技能 ${skill.name}`} onClick={() => toggleBatchSelection(skill.name)}>{selectedNames.includes(skill.name) ? '✓' : ''}</button> : null}<button className="card-open" aria-label={`查看技能 ${skill.name}`} onClick={() => batchMode && skill.manageable ? toggleBatchSelection(skill.name) : void openDetail(skill.name)}><span className="card-title"><strong title={skill.name}>{skill.title ?? skill.name}</strong><small className="slug">{skill.name}</small></span></button>
-    </div><p className="muted">{skill.localizedDescription ?? skill.description}</p><div className="card-foot"><button className="try" disabled={skill.state !== 'enabled'} onClick={() => void trial(skill.name)}>去试试</button>{!batchMode && skill.manageable && <div className="card-actions"><Button variant="ghost" size="sm" className="more-button" aria-label={`管理技能 ${skill.name}`} aria-haspopup="menu" aria-expanded={actionMenu === skill.name} onClick={() => setActionMenu(current => current === skill.name ? undefined : skill.name)}>•••</Button>{actionMenu === skill.name && <div className="card-menu" role="menu">
+    </div><p className="muted">{skill.localizedDescription ?? skill.description}</p>{skill.tags?.length ? <div className="skill-tags">{skill.tags.map(tag => <span key={tag}>{tag}</span>)}</div> : null}<div className="card-foot"><button className="try" disabled={skill.state !== 'enabled'} onClick={() => void trial(skill.name)}>去试试</button>{!batchMode && skill.manageable && <div className="card-actions"><Button variant="ghost" size="sm" className="more-button" aria-label={`管理技能 ${skill.name}`} aria-haspopup="menu" aria-expanded={actionMenu === skill.name} onClick={() => setActionMenu(current => current === skill.name ? undefined : skill.name)}>•••</Button>{actionMenu === skill.name && <div className="card-menu" role="menu">
       <button role="menuitem" disabled={skill.state !== 'enabled'} onClick={() => void trial(skill.name)}>去试试</button>
       <button role="menuitem" disabled={creating} onClick={() => void editSkillInTask(skill)}>编辑</button>
       <button role="menuitem" onClick={() => void openDirectory(skill)}>打开文件夹</button>
@@ -257,6 +272,7 @@ export function SkillsPanel({ toggleNavigation, management, startSkillTask, star
         <h1>我安装的 <span className="market-count">{skills.length}</span></h1>
         <div className="installed-tools">
           <Button className={batchMode ? 'batch-toggle active' : 'batch-toggle'} onClick={toggleBatch}>{batchMode ? '退出批量' : '批量管理'}</Button>
+          {tagFilterControl}
           <Input className="search" aria-label="搜索已安装的技能" placeholder="搜索已安装的技能" value={installedQuery} onChange={event => setInstalledQuery(event.currentTarget.value)} />
         </div>
       </div>
@@ -276,6 +292,7 @@ export function SkillsPanel({ toggleNavigation, management, startSkillTask, star
           onClick={() => { if (!active && target) openCapability(target); }}>{label}</button>;
       })}
       <Input ref={search} className="search" aria-label="搜索技能" placeholder="搜索技能" value={query} onChange={event => setQuery(event.currentTarget.value)} />
+      {tagFilterControl}
       
       <Button className={batchMode ? 'batch-toggle active' : 'batch-toggle'} onClick={toggleBatch}>{batchMode ? '退出批量' : '批量管理'}</Button>
       
@@ -287,9 +304,9 @@ export function SkillsPanel({ toggleNavigation, management, startSkillTask, star
     {countsLine}
     {!busy && available.length ? <section className="market-section" aria-label="可安装技能"><div className="market-head"><h2>可安装 <span className="market-count">{available.length}</span></h2><span className="muted">来自本地技能目录，点击 ＋ 直接安装</span></div>
       <div className="grid">{available.map(entry => <article className="card market-card" key={entry.name}>
-        <div className="card-top"><button className="card-open" aria-label={`查看技能 ${entry.name}`} onClick={() => { setError(''); setPreview(entry); }}><SkillMark name={entry.name} title={entry.title} iconUrl={entry.iconUrl} /><span className="card-title"><strong title={entry.name}>{entry.title}</strong>{entry.categories.length ? <small>{entry.categories.slice(0, 2).join(' · ')}</small> : null}</span></button>
+        <div className="card-top"><button className="card-open" aria-label={`查看技能 ${entry.name}`} onClick={() => { setError(''); setPreview(entry); }}><SkillMark name={entry.name} title={entry.title} iconUrl={entry.iconUrl} /><span className="card-title"><strong title={entry.name}>{entry.title}</strong></span></button>
           <Button className="install" disabled={!entry.installable || Boolean(installBusy)} aria-label={`安装技能 ${entry.title}`} title={entry.installable ? `安装 ${entry.title}` : `暂不可安装：${entry.installLimits?.join('；') ?? '超出安装限制'}`} onClick={() => void install(entry)}>{installBusy === entry.name ? '…' : '＋'}</Button>
-        </div><p className="muted">{entry.description}</p>
+        </div><p className="muted">{entry.description}</p>{entry.categories.length ? <div className="skill-tags">{entry.categories.map(tag => <span key={tag}>{tag}</span>)}</div> : null}
       </article>)}</div>
     </section> : null}
     {!busy && !filtered.length ? <div className="empty"><strong>{skills.length ? '没有匹配的技能' : '尚未发现已安装技能'}</strong><span className="muted">可用上方「＋ 添加技能」上传，或从下方目录安装。</span></div> : null}
@@ -303,7 +320,7 @@ export function SkillsPanel({ toggleNavigation, management, startSkillTask, star
         <p className="detail-summary">{preview.description}</p>
         {preview.installLimits?.length ? <section className="validation-errors"><h3>暂不可直接安装</h3><ul>{preview.installLimits.map(item => <li key={item}>{item}</li>)}</ul><p className="muted">可通过「＋ 添加技能 → 上传技能」手动导入整理后的副本。</p></section> : null}
         <h2 className="detail-section-title">{icon('library')}基本信息</h2>
-        <div className="detail-body"><dl><dt>技能标识</dt><dd><code className="command">/{preview.name}</code></dd><dt>分类</dt><dd>{preview.categories.join(' · ') || '未分类'}</dd><dt>版本</dt><dd>{preview.version ?? '未标注'}</dd></dl>{preview.examples?.length ? <><h3>使用示例</h3><ul className="example-list">{preview.examples.map(item => <li key={item}>{item}</li>)}</ul></> : null}</div>
+        <div className="detail-body"><dl><dt>技能标识</dt><dd><code className="command">/{preview.name}</code></dd><dt>标签</dt><dd>{preview.categories.join(' · ') || '未设置'}</dd><dt>版本</dt><dd>{preview.version ?? '未标注'}</dd></dl>{preview.examples?.length ? <><h3>使用示例</h3><ul className="example-list">{preview.examples.map(item => <li key={item}>{item}</li>)}</ul></> : null}</div>
       </article>}
     </Modal>
     <Modal open={Boolean(selected)} label={selected ? `${selected.name} 技能详情` : '技能详情'} className="skill-detail-dialog" onClose={() => { setSelected(undefined); setEditing(false); setResource(undefined); }}>
@@ -312,14 +329,14 @@ export function SkillsPanel({ toggleNavigation, management, startSkillTask, star
         <div className="detail-body">{resource
           ? <><div className="resource-editor-head"><Button onClick={() => setResource(undefined)}>返回概述</Button><strong>{resource.path}</strong></div><label className="editor-label" htmlFor="resource-document">资源文件</label><Textarea id="resource-document" className="skill-editor" value={resourceDocument} onChange={event => setResourceDocument(event.currentTarget.value)} spellCheck={false} /><div className="editor-actions"><Button onClick={() => { setResourceDocument(resource.document); setResource(undefined); }}>取消</Button><Button variant="primary" className="save" disabled={busy || (!resource.isNew && resourceDocument === resource.document)} onClick={() => void saveResource()}>保存资源</Button></div></>
           : editing
-          ? <><div className="editor-field"><label className="editor-label" htmlFor="skill-title">显示名称</label><Input id="skill-title" value={skillTitle} placeholder={selected.name} onChange={event => setSkillTitle(event.currentTarget.value)} /><small className="muted">显示在卡片和详情里的名字；留空则用技能自身的名称</small></div><label className="editor-label" htmlFor="skill-document">SKILL.md</label><Textarea id="skill-document" className="skill-editor" value={skillDocument} onChange={event => setSkillDocument(event.currentTarget.value)} spellCheck={false} /><div className="skill-editor-preview-head">渲染预览</div><div className="skill-editor-preview md-body" data-testid="skill-editor-preview"><MarkdownDocument text={skillDocument} /></div><div className="editor-actions"><Button onClick={() => { setSkillDocument(selected.document ?? ''); setSkillTitle(selected.title ?? ''); setEditing(false); }}>取消</Button><Button variant="primary" className="save" disabled={busy || (skillDocument === selected.document && skillTitle.trim() === (selected.title ?? '').trim())} onClick={() => void save()}>保存并重新发现</Button></div></>
-          : <><dl><dt>名称</dt><dd>{selected.name}</dd><dt>状态</dt><dd>{selected.state === 'enabled' ? '已启用' : selected.state === 'disabled' ? '已停用' : selected.state === 'invalid' ? '需要修复' : '只读'}</dd><dt>调用方式</dt><dd><code className="command">/{selected.name}</code></dd></dl>{selected.diagnostics?.length ? <section className="validation-errors"><h3>校验问题</h3><ul>{selected.diagnostics.map(item => <li key={`${item.code}-${item.path ?? ''}`}>{item.message}</li>)}</ul><Button onClick={() => setEditing(true)}>修复 SKILL.md</Button></section> : null}{selected.manageable && <section className="resource-section"><h3>资源文件</h3>{selected.resources.length ? <div className="resource-list">{selected.resources.map(path => <Button key={path} onClick={() => void openResource(path)}>{path}</Button>)}</div> : <p className="muted">暂无附加资源</p>}<div className="new-resource"><Input aria-label="新资源路径" placeholder="例如 references/guide.md" value={newResourcePath} onChange={event => setNewResourcePath(event.currentTarget.value)} /><Button disabled={!newResourcePath.trim()} onClick={beginResource}>新建资源</Button></div></section>}<div className="skill-document markdown md-body" data-testid="skill-document"><MarkdownDocument text={selected.document ?? selected.whenToUse ?? selected.description} /></div></>}{error && <p className="error" role="alert">{error}</p>}</div>
+          ? <><div className="editor-field"><label className="editor-label" htmlFor="skill-title">显示名称</label><Input id="skill-title" value={skillTitle} placeholder={selected.name} onChange={event => setSkillTitle(event.currentTarget.value)} /><small className="muted">显示在卡片和详情里的名字；留空则用技能自身的名称</small></div><TagEditor tags={skillTags} options={marketTags} onChange={setSkillTags} /><label className="editor-label" htmlFor="skill-document">SKILL.md</label><Textarea id="skill-document" className="skill-editor" value={skillDocument} onChange={event => setSkillDocument(event.currentTarget.value)} spellCheck={false} /><div className="skill-editor-preview-head">渲染预览</div><div className="skill-editor-preview md-body" data-testid="skill-editor-preview"><MarkdownDocument text={skillDocument} /></div><div className="editor-actions"><Button onClick={() => { setSkillDocument(selected.document ?? ''); setSkillTitle(selected.title ?? ''); setSkillTags([...(selected.tags ?? [])]); setEditing(false); }}>取消</Button><Button variant="primary" className="save" disabled={busy || (skillDocument === selected.document && skillTitle.trim() === (selected.title ?? '').trim() && skillTags.join('\0') === (selected.tags ?? []).join('\0'))} onClick={() => void save()}>保存并重新发现</Button></div></>
+          : <><dl><dt>名称</dt><dd>{selected.name}</dd><dt>标签</dt><dd>{selected.tags?.join(' · ') || '未设置'}</dd><dt>状态</dt><dd>{selected.state === 'enabled' ? '已启用' : selected.state === 'disabled' ? '已停用' : selected.state === 'invalid' ? '需要修复' : '只读'}</dd><dt>调用方式</dt><dd><code className="command">/{selected.name}</code></dd></dl>{selected.diagnostics?.length ? <section className="validation-errors"><h3>校验问题</h3><ul>{selected.diagnostics.map(item => <li key={`${item.code}-${item.path ?? ''}`}>{item.message}</li>)}</ul><Button onClick={() => setEditing(true)}>修复 SKILL.md</Button></section> : null}{selected.manageable && <section className="resource-section"><h3>资源文件</h3>{selected.resources.length ? <div className="resource-list">{selected.resources.map(path => <Button key={path} onClick={() => void openResource(path)}>{path}</Button>)}</div> : <p className="muted">暂无附加资源</p>}<div className="new-resource"><Input aria-label="新资源路径" placeholder="例如 references/guide.md" value={newResourcePath} onChange={event => setNewResourcePath(event.currentTarget.value)} /><Button disabled={!newResourcePath.trim()} onClick={beginResource}>新建资源</Button></div></section>}<div className="skill-document markdown md-body" data-testid="skill-document"><MarkdownDocument text={selected.document ?? selected.whenToUse ?? selected.description} /></div></>}{error && <p className="error" role="alert">{error}</p>}</div>
       </article>}
     </Modal>
     <Modal open={Boolean(confirmUninstall)} label="确认卸载技能" className="confirm-dialog" onClose={() => setConfirmUninstall(undefined)}>{confirmUninstall && <div><h2>卸载 {confirmUninstall.skill.name}？</h2><p>技能将移入 Workspace 回收目录，并从所有任务的可调用技能中移除。</p>{confirmUninstall.impact.dependents.length ? <div className="dependency-impact"><strong>依赖影响</strong><ul>{confirmUninstall.impact.dependents.map(item => <li key={`${item.kind}-${item.id}`}>{item.label}{item.blocking ? '（需先解除）' : ''}</li>)}</ul></div> : <p className="dependency-clear">未发现 Workspace 对象依赖此技能。</p>}<div className="confirm-actions"><Button onClick={() => setConfirmUninstall(undefined)}>取消</Button><Button tone="danger" className="danger solid" disabled={confirmUninstall.impact.dependents.some(item => item.blocking)} onClick={() => void uninstall()}>确认卸载</Button></div></div>}</Modal>
     <Modal open={confirmBatchUninstall} label="确认批量卸载技能" className="confirm-dialog" onClose={() => setConfirmBatchUninstall(false)}><div><h2>卸载所选 {selectedNames.length} 个技能？</h2><p>每个成功卸载的技能会分别进入可恢复目录；失败项会保留选择并显示原因。</p><div className="confirm-actions"><Button onClick={() => setConfirmBatchUninstall(false)}>取消</Button><Button tone="danger" className="danger solid" onClick={() => void runBatch('uninstall')}>确认卸载</Button></div></div></Modal>
     <Modal open={trashOpen} label="最近卸载的技能" className="trash-dialog" onClose={() => setTrashOpen(false)}><h2>最近卸载</h2>{trash.length ? <div className="trash-list">{trash.map(entry => <div key={entry.id}><div><strong>{entry.name}</strong><small>{new Date(entry.removedAt).toLocaleString()} · {entry.previousState === 'enabled' ? '原为启用' : '原为停用'}</small></div><Button disabled={busy} onClick={() => void restore(entry)}>恢复</Button></div>)}</div> : <p className="muted">没有可恢复的技能。</p>}{error && <p className="error" role="alert">{error}</p>}</Modal>
-    <ImportSkillModal open={importOpen} management={management} onClose={() => setImportOpen(false)} onInstalled={async name => { await refresh(); await openDetail(name); }} />
+    <ImportSkillModal open={importOpen} management={management} existingTags={marketTags} onClose={() => setImportOpen(false)} onInstalled={async name => { await refresh(); await openDetail(name); }} />
     <Modal open={rename !== undefined} label="设置显示名称" className="confirm-dialog rename-dialog" onClose={() => setRename(undefined)}>{rename && <div><h2>设置显示名称</h2><p className="muted">只影响卡片与详情里显示的名字，不改变技能标识与调用方式。</p><input className="rename-input" autoFocus value={rename.value} placeholder="留空则恢复技能自身的名称" onChange={event => setRename({ ...rename, value: event.currentTarget.value })} /><div className="confirm-actions"><Button onClick={() => setRename(undefined)}>取消</Button><Button variant="primary" className="save" disabled={busy} onClick={() => void saveRename()}>保存</Button></div></div>}</Modal>
   </section>;
 }

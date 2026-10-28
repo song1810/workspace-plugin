@@ -15,6 +15,7 @@ export type ExpertDraftEditorProps = {
   readonly onSaved: () => void;
   readonly onPublished: () => void;
   readonly onSummon: (expertId: string, revisionId: string | undefined, draftText: string | undefined) => void;
+  readonly tagOptions?: readonly string[];
 };
 
 type ExampleRow = { id: string; title: string; prompt: string };
@@ -65,7 +66,7 @@ function Counter({ value, max }: { value: number; max: number }) {
   return <span className={`counter ${value > max ? 'field-error' : ''}`}>{value}/{max}</span>;
 }
 
-export function ExpertDraftEditor({ expertId, management, onClose, onSaved, onPublished, onSummon }: ExpertDraftEditorProps) {
+export function ExpertDraftEditor({ expertId, management, onClose, onSaved, onPublished, onSummon, tagOptions = [] }: ExpertDraftEditorProps) {
   const [form, setForm] = useState<FormState>();
   const [selectedFile, setSelectedFile] = useState('');
   const [baseline, setBaseline] = useState('');
@@ -251,6 +252,11 @@ export function ExpertDraftEditor({ expertId, management, onClose, onSaved, onPu
               <Button variant="ghost" size="sm" className="remove" aria-label={`删除标签 ${index + 1}`} onClick={() => set('tags', form.tags.filter((_, i) => i !== index))}>删除</Button>
             </div>)}
             {form.tags.length < EXPERT_LIMITS.tagsMax && <Button className="add-row" onClick={() => set('tags', [...form.tags, ''])}>+ 添加标签</Button>}
+            {form.tags.length < EXPERT_LIMITS.tagsMax && tagOptions.some(tag => !form.tags.includes(tag)) && <Select aria-label="从已有标签选择" value="" onChange={event => {
+              const tag = event.currentTarget.value;
+              if (tag && !form.tags.includes(tag)) set('tags', [...form.tags, tag]);
+              event.currentTarget.value = '';
+            }}><option value="">从已有标签选择</option>{tagOptions.filter(tag => !form.tags.includes(tag)).map(tag => <option key={tag} value={tag}>{tag}</option>)}</Select>}
           </div>
         </div>
       </section>

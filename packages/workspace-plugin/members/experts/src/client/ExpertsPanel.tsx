@@ -1,4 +1,4 @@
-import { Button, Input } from 'workspace-ui';
+import { Button, Input, Select } from 'workspace-ui';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // The `main` slot PropsRuntime is augmented by the official layout client module;
@@ -55,6 +55,7 @@ export function ExpertsPanel({ toggleNavigation, management, openCapability, has
   const [debounced, setDebounced] = useState('');
   const [originFilter, setOriginFilter] = useState<OriginFilter>('all');
   const [stateFilter, setStateFilter] = useState<StateFilter>('all');
+  const [tagFilter, setTagFilter] = useState('all');
   const [items, setItems] = useState<readonly ExpertSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [nextCursor, setNextCursor] = useState<string | undefined>();
@@ -132,12 +133,17 @@ export function ExpertsPanel({ toggleNavigation, management, openCapability, has
     document.addEventListener('pointerdown', outside); return () => document.removeEventListener('pointerdown', outside);
   }, [actionMenu]);
 
-  const visible = useMemo(() => {
+  const baseVisible = useMemo(() => {
     if (view === 'center') return items.filter(item => item.publishedRevisionRef !== undefined);
     if (stateFilter === 'draft') return items.filter(item => item.publishedRevisionRef === undefined);
     if (stateFilter === 'published') return items.filter(item => item.publishedRevisionRef !== undefined);
     return items;
   }, [items, view, stateFilter]);
+  const allTags = useMemo(() => [...new Set(items.flatMap(item => item.tags ?? []))].sort((a, b) => a.localeCompare(b)), [items]);
+  const visibleTags = useMemo(() => [...new Set(baseVisible.flatMap(item => item.tags ?? []))].sort((a, b) => a.localeCompare(b)), [baseVisible]);
+  useEffect(() => { if (tagFilter !== 'all' && !visibleTags.includes(tagFilter)) setTagFilter('all'); }, [tagFilter, visibleTags]);
+  useEffect(() => { setTagFilter('all'); }, [view, kind, debounced, stateFilter, originFilter]);
+  const visible = tagFilter === 'all' ? baseVisible : baseVisible.filter(item => item.tags?.includes(tagFilter));
 
   const refresh = useCallback(() => { void load(); void loadMineCount(); }, [load, loadMineCount]);
   const closeEditor = () => {
@@ -218,6 +224,10 @@ export function ExpertsPanel({ toggleNavigation, management, openCapability, has
     <div className="section-head">
       <nav className="work-types" aria-label={view === 'mine' ? '我的作品类型' : '专家中心类型'}>{([['agent', '专家'], ['team', '专家团']] as const).map(([type, label]) => <button key={type} className={kind === type ? 'active' : ''} aria-pressed={kind === type} onClick={() => { setKind(type); setQuery(''); }}>{label}{view === 'mine' && <span>{typeCounts[type]}</span>}</button>)}</nav>
       <div className="section-actions">
+        <Select className="tag-filter" aria-label="按标签筛选" value={tagFilter} onChange={event => setTagFilter(event.currentTarget.value)}>
+          <option value="all">全部</option>
+          {visibleTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
+        </Select>
         <Button onClick={() => setImportOpen(true)}>导入</Button>
         <Button onClick={refresh} disabled={busy}>刷新</Button>
       </div>
@@ -260,6 +270,7 @@ export function ExpertsPanel({ toggleNavigation, management, openCapability, has
               </button>
             </div>
             <p className="desc">{summary.description || <span className="muted">（暂无简介）</span>}</p>
+            {summary.tags?.length ? <div className="tag-list">{summary.tags.map(tag => <span key={tag}>{tag}</span>)}</div> : null}
             <div className="card-foot"><button className="summon" disabled={!usable || acting} onClick={() => void runSummon(summary.id, summary.publishedRevisionRef?.revisionId, undefined)}>召唤</button>
               {/* The kind is already the tab you are looking at, and "可用" is the absence of
                   news; only a real problem still earns a badge here. */}
@@ -314,7 +325,7 @@ export function ExpertsPanel({ toggleNavigation, management, openCapability, has
         onChanged={refresh} />}
     </Modal>
 
-    {editorId && <ExpertDraftEditor expertId={editorId} management={management}
+    {editorId && <ExpertDraftEditor expertId={editorId} management={management} tagOptions={allTags}
       onClose={closeEditor}
       onSaved={refresh}
       onPublished={() => { closeEditor(); refresh(); }}
@@ -323,7 +334,7 @@ export function ExpertsPanel({ toggleNavigation, management, openCapability, has
     <Modal open={rename !== undefined} label="设置显示名称" className="confirm-dialog" onClose={() => setRename(undefined)}>{rename && <div><h2>设置显示名称</h2><p className="muted">只影响你自己的卡片显示，不会改变专家本身的标识。</p><input className="rename-input" autoFocus value={rename.value} placeholder="留空则恢复原名称" onChange={event => setRename({ ...rename, value: event.currentTarget.value })} /><div className="confirm-actions"><Button onClick={() => setRename(undefined)}>取消</Button><Button variant="primary" onClick={() => { const target = rename; void (async () => { try { await management.setDisplayName(target.id, target.value); setRename(undefined); await refresh(); } catch (cause) { setError(messageOf(cause)); } })(); }}>保存</Button></div></div>}</Modal>
     <Modal open={removeTarget !== undefined} label="确认卸载专家" className="confirm-dialog" onClose={() => setRemoveTarget(undefined)}>{removeTarget && <div><h2>卸载这位专家？</h2><p className="muted">将删除它的草稿、全部已发布修订、随包安装的技能，以及所有人的显示偏好。此操作不可恢复。</p><p className="muted">如果已有会话使用该专家/专家团，必须先删除相关会话。</p><div className="confirm-actions"><Button onClick={() => setRemoveTarget(undefined)}>取消</Button><Button tone="danger" className="danger solid" onClick={() => { const target = removeTarget; void (async () => { try { await management.deleteExpert(target); setRemoveTarget(undefined); await refresh(); } catch (cause) { setError(messageOf(cause)); } })(); }}>确认卸载</Button></div></div>}</Modal>
     <Modal open={importOpen} label="导入专家" className="import-dialog" onClose={() => setImportOpen(false)}>
-      {importOpen && <ImportExpertModal management={management} onClose={() => setImportOpen(false)}
+      {importOpen && <ImportExpertModal management={management} existingTags={allTags} onClose={() => setImportOpen(false)}
         onImported={id => { setImportOpen(false); refresh(); setEditorId(id); }} />}
     </Modal>
   </section>;

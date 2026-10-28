@@ -12,7 +12,7 @@ const importIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}
 
 type Receipt = StagedSkillImport & { readonly source: string; readonly createdAt: string; readonly sourceFingerprint: string };
 type Inspect = (source: string, signal?: AbortSignal) => Promise<SkillImportInspection>;
-type Install = (request: { source: string; scope?: SkillInstallScope; title?: string }, signal?: AbortSignal) => Promise<SkillMutationReceipt>;
+type Install = (request: { source: string; scope?: SkillInstallScope; title?: string; tags?: readonly string[] }, signal?: AbortSignal) => Promise<SkillMutationReceipt>;
 
 function safeArchivePath(raw: string): string | undefined {
   const portable = raw.replace(/\\/g, '/').replace(/^\.\//, '');
@@ -143,11 +143,11 @@ export class SkillImportStaging {
     }
   }
 
-  async commit(id: string, scope?: SkillInstallScope, signal?: AbortSignal, title?: string): Promise<SkillMutationReceipt> {
+  async commit(id: string, scope?: SkillInstallScope, signal?: AbortSignal, title?: string, tags?: readonly string[]): Promise<SkillMutationReceipt> {
     signal?.throwIfAborted();
     const receipt = await this.readReceipt(id, signal);
     signal?.throwIfAborted();
-    const installed = await this.install({ source: receipt.source, scope, title }, signal);
+    const installed = await this.install({ source: receipt.source, scope, title, tags }, signal);
     await rm(join(this.root, id), { recursive: true, force: true });
     return installed;
   }

@@ -19,7 +19,7 @@ const target = join(root, 'packages/workspace-plugin')
  * apart. Override for a one-off build with `--version <x>`.
  */
 const versionFlag = process.argv.indexOf('--version')
-const VERSION = versionFlag === -1 ? '0.2.4' : (process.argv[versionFlag + 1] ?? '0.2.4')
+const VERSION = versionFlag === -1 ? '0.2.5' : (process.argv[versionFlag + 1] ?? '0.2.5')
 
 /**
  * Rewrite the asset URLs a member's code computes with `import.meta.url`.

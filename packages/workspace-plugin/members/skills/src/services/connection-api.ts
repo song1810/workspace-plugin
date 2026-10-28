@@ -13,6 +13,10 @@ const ok = <T>(value: T): ConnectionRpcResult<T> => ({ ok: true, value });
 const fail = (code: string, message: string): ConnectionRpcResult<never> => ({ ok: false, error: { code, message, details: {} } });
 const record = (value: unknown): Record<string, unknown> | undefined => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 const nameFrom = (payload: unknown): string | undefined => typeof record(payload)?.name === 'string' ? record(payload)?.name as string : undefined;
+const tagsFrom = (payload: unknown): string[] | undefined => {
+  const tags = record(payload)?.tags;
+  return Array.isArray(tags) ? tags.filter((tag): tag is string => typeof tag === 'string').slice(0, 20) : undefined;
+};
 
 function publicFailure(error: unknown): ConnectionRpcResult<never> {
   if (error instanceof DOMException && error.name === 'AbortError') return fail('skill/request-cancelled', '操作已取消。');
@@ -72,9 +76,9 @@ async function dispatch(manager: SkillManagementService, rawEndpoint: unknown, p
       return ok(await manager.restore(id));
     }
     if (endpoint === 'commit-import') {
-      const input = record(payload); const id = input?.id; const scope = input?.scope; const title = input?.title;
+      const input = record(payload); const id = input?.id; const scope = input?.scope; const title = input?.title; const tags = tagsFrom(input);
       if (typeof id !== 'string' || (scope !== undefined && scope !== 'shared-agents' && scope !== 'profile') || (title !== undefined && typeof title !== 'string')) return fail('skill/invalid-request', '导入范围或凭据无效。');
-      return ok(await manager.imports.commit(id, scope as SkillInstallScope | undefined, signal, title as string | undefined));
+      return ok(await manager.imports.commit(id, scope as SkillInstallScope | undefined, signal, title as string | undefined, tags));
     }
     if (endpoint === 'discard-import') {
       const id = record(payload)?.id;
@@ -98,7 +102,7 @@ async function dispatch(manager: SkillManagementService, rawEndpoint: unknown, p
       if (typeof input?.document !== 'string' || input.document.length > 1024 * 1024 || typeof input.expectedRevision !== 'string' || (title !== undefined && typeof title !== 'string')) {
         return fail('skill/invalid-request', '技能文档或版本信息无效。');
       }
-      return ok(await manager.update({ name, document: input.document, expectedRevision: input.expectedRevision, ...(title === undefined ? {} : { title }) }));
+      return ok(await manager.update({ name, document: input.document, expectedRevision: input.expectedRevision, ...(title === undefined ? {} : { title }), ...(tagsFrom(input) === undefined ? {} : { tags: tagsFrom(input) }) }));
     }
     if (endpoint === 'resource') {
       const resourcePath = record(payload)?.path;

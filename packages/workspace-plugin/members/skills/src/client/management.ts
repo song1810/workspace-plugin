@@ -75,7 +75,7 @@ export function createSkillManagementClient(ctx: Context, lifetime?: AbortSignal
         body: file,
       }, 120_000, scoped(signal));
     },
-    commitImport: (id: string, scope: SkillInstallScope, title?: string, signal?: AbortSignal) => invoke<SkillMutationReceipt>('commit-import', { id, scope, ...(title?.trim() ? { title: title.trim() } : {}) }, signal),
+    commitImport: (id: string, scope: SkillInstallScope, title?: string, tags?: readonly string[], signal?: AbortSignal) => invoke<SkillMutationReceipt>('commit-import', { id, scope, ...(title?.trim() ? { title: title.trim() } : {}), ...(tags === undefined ? {} : { tags }) }, signal),
     discardImport: (id: string) => invoke<null>('discard-import', { id }),
     openDirectory: async (path: string) => {
       lifetime?.throwIfAborted();

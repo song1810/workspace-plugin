@@ -8,6 +8,7 @@ const draftOutput = {
     draftId: { type: 'string' as const, required: true as const },
     name: { type: 'string' as const, required: true as const },
     scope: { type: 'string' as const, required: true as const, enum: ['shared-agents', 'profile'] as const },
+    tags: { type: 'array' as const, required: true as const, items: { type: 'string' as const } },
     revision: { type: 'string' as const, required: true as const },
     valid: { type: 'boolean' as const, required: true as const },
     diagnostics: { type: 'array' as const, required: true as const, items: { type: 'string' as const } },
@@ -19,6 +20,7 @@ function draftProjection(draft: Awaited<ReturnType<Context['workspaceSkills']['g
     draftId: draft.id,
     name: draft.name,
     scope: draft.scope,
+    tags: [...draft.tags],
     revision: draft.revision,
     valid: draft.validation.valid,
     diagnostics: draft.validation.diagnostics.map(item => `${item.code}: ${item.message}`),
@@ -34,6 +36,7 @@ export function registerSkillLifecycleTools(ctx: Context): void {
       name: { type: 'string', required: true, description: 'Exact kebab-case skill name.' },
       document: { type: 'string', required: true, description: 'Complete SKILL.md including YAML frontmatter and instructions.' },
       scope: { type: 'string', enum: ['shared-agents', 'profile'], description: 'shared-agents is visible to all compatible tasks; profile is limited to this Harness profile.' },
+      tags: { type: 'array', items: { type: 'string' }, description: 'User-defined labels used by the skill list; create or reuse labels deliberately.' },
       draft_id: { type: 'string', description: 'Existing draft id when revising.' },
       expected_revision: { type: 'string', description: 'Required current revision when revising an existing draft.' },
     },
@@ -48,6 +51,7 @@ export function registerSkillLifecycleTools(ctx: Context): void {
         name: args.name,
         document: args.document,
         ...(args.scope ? { scope: args.scope } : {}),
+        ...(args.tags ? { tags: args.tags } : {}),
         ...(args.draft_id ? { id: args.draft_id, expectedRevision: args.expected_revision } : {}),
       });
       exec.signal.throwIfAborted();

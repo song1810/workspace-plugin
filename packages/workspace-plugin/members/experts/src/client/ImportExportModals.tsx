@@ -1,11 +1,13 @@
 import { Button } from 'workspace-ui';
 import * as React from 'react';
 import { useRef, useState } from 'react';
-import type { ImportPreview } from '../shared.js';
+import { EXPERT_LIMITS, type ImportPreview } from '../shared.js';
 import type { ExpertManagementClient } from './management.js';
+import { TagEditor } from './TagEditor.js';
 
 export type ImportExpertModalProps = {
   readonly management: ExpertManagementClient;
+  readonly existingTags: readonly string[];
   readonly onClose: () => void;
   readonly onImported: (expertId: string) => void;
 };
@@ -17,12 +19,13 @@ function messageOf(cause: unknown): string { return cause instanceof Error ? cau
  * issues and missing dependencies, then commit into a new editable draft. Nothing is
  * published here — the user reviews and publishes from the editor afterwards.
  */
-export function ImportExpertModal({ management, onClose, onImported }: ImportExpertModalProps) {
+export function ImportExpertModal({ management, existingTags, onClose, onImported }: ImportExpertModalProps) {
   const [preview, setPreview] = useState<ImportPreview>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [dragging, setDragging] = useState(false);
   const [fileName, setFileName] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
   const input = useRef<HTMLInputElement>(null);
 
   const ingest = async (file: File) => {
@@ -31,6 +34,7 @@ export function ImportExpertModal({ management, onClose, onImported }: ImportExp
       const staged = await management.stageImport(file);
       const result = await management.previewImport(staged.uploadedArtifactRef);
       setPreview(result);
+      setTags([...(result.candidate.tags ?? [])]);
     } catch (cause) { setError(messageOf(cause)); }
     finally { setBusy(false); }
   };
@@ -40,6 +44,10 @@ export function ImportExpertModal({ management, onClose, onImported }: ImportExp
     setBusy(true); setError('');
     try {
       const draft = await management.commitImport(preview.importPlanId, preview.previewDigest, management.newOperationId('commit-import'));
+      const originalTags = preview.candidate.tags ?? [];
+      if (tags.join('\0') !== originalTags.join('\0')) {
+        await management.updateDraft(draft.expertId, { tags }, management.newOperationId('import-tags'), draft.revision);
+      }
       onImported(draft.expertId);
     } catch (cause) { setError(messageOf(cause)); setBusy(false); }
   };
@@ -62,6 +70,7 @@ export function ImportExpertModal({ management, onClose, onImported }: ImportExp
           <dt>预览摘要</dt><dd className="digest">{preview.previewDigest}</dd>
           <dt>Skill 依赖</dt><dd>{preview.candidate.skillRequirements.length > 0 ? preview.candidate.skillRequirements.map(req => req.name).join('、') : '无'}</dd>
         </dl>
+        <TagEditor tags={tags} options={existingTags} onChange={setTags} max={EXPERT_LIMITS.tagsMax} />
         {preview.missingDependencies.length > 0 && <>
           <h4 className="error-text">缺失依赖（{preview.missingDependencies.length}）</h4>
           <ul className="issue-list">{preview.missingDependencies.map((issue, index) => <li key={index}>{issue.message}</li>)}</ul>

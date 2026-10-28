@@ -20,6 +20,7 @@ export interface ManagedSkillSummary {
   readonly name: string;
   readonly description: string;
   readonly whenToUse?: string;
+  readonly tags?: readonly string[];
   readonly modelInvocable: boolean;
   readonly state: ManagedSkillState;
   readonly manageable: boolean;
@@ -42,6 +43,7 @@ export interface SkillWriteRequest {
   readonly name: string;
   readonly document: string;
   readonly expectedRevision: string;
+  readonly tags?: readonly string[];
   /**
    * New display name for the installed skill. Omitted leaves the current name alone;
    * an empty string drops the override so the skill falls back to its catalog title
@@ -74,6 +76,7 @@ export interface SkillDraft {
   readonly name: string;
   readonly scope: SkillInstallScope;
   readonly document: string;
+  readonly tags: readonly string[];
   readonly revision: string;
   readonly updatedAt: string;
   readonly validation: SkillValidationResult;
@@ -85,6 +88,7 @@ export interface SkillDraftWriteRequest {
   readonly name: string;
   readonly scope?: SkillInstallScope;
   readonly document: string;
+  readonly tags?: readonly string[];
 }
 
 export type SkillBatchAction = 'enable' | 'disable' | 'uninstall';
@@ -177,6 +181,8 @@ export interface SkillImportRequest {
   readonly scope?: SkillInstallScope;
   /** Display name the user typed at import time; overrides catalog metadata for this skill. */
   readonly title?: string;
+  /** User-defined labels shown and filtered in the skill list. */
+  readonly tags?: readonly string[];
   /** Installed as part of an expert/team package: usable, but kept out of the skill list. */
   readonly hidden?: boolean;
   /** Expert/team package that brought this skill in, so uninstalling it can take them along. */
@@ -233,7 +239,7 @@ export interface SkillManagementService extends SkillRevisionProvider {
   deleteOwned(owner: string): Promise<readonly string[]>;
   readonly imports: {
     stage(fileName: string, body: ReadableStream<Uint8Array> | null, signal: AbortSignal): Promise<StagedSkillImport>;
-    commit(id: string, scope?: SkillInstallScope, signal?: AbortSignal, title?: string): Promise<SkillMutationReceipt>;
+    commit(id: string, scope?: SkillInstallScope, signal?: AbortSignal, title?: string, tags?: readonly string[]): Promise<SkillMutationReceipt>;
     discard(id: string): Promise<void>;
   };
 }

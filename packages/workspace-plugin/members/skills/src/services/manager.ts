@@ -21,6 +21,21 @@ const skillNamePattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const trashIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*-\d{4}-\d{2}-\d{2}T[0-9-]+Z$/;
 const maximumDocumentBytes = 1024 * 1024;
 const draftIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const tagsMax = 20;
+const tagCharactersMax = 20;
+
+function normalizeTags(tags: readonly string[] | undefined): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of tags ?? []) {
+    const tag = raw.trim();
+    if (!tag || tag.length > tagCharactersMax || seen.has(tag)) continue;
+    seen.add(tag);
+    result.push(tag);
+    if (result.length >= tagsMax) break;
+  }
+  return result;
+}
 
 interface DisabledOrigin { readonly name: string; readonly originalEntry: string; readonly directoryBundle: boolean; }
 interface TrashReceipt extends TrashedSkillSummary { readonly originalEntry: string; readonly trashedEntry: string; readonly directoryBundle: boolean; }
@@ -146,7 +161,7 @@ async function copyImportTree(source: string, target: string, signal?: AbortSign
 }
 
 /** Provenance of one skill this plugin installed, with the display title its user chose. */
-interface InstalledSkillRecord { readonly name: string; readonly title?: string; readonly hidden?: boolean; readonly owner?: string; readonly installedAt: string; }
+interface InstalledSkillRecord { readonly name: string; readonly title?: string; readonly tags?: readonly string[]; readonly hidden?: boolean; readonly owner?: string; readonly installedAt: string; }
 
 /** Host authority for local skill files. Harness remains the discovery and execution owner. */
 export class SkillManager extends Service implements SkillManagementService {
@@ -232,7 +247,12 @@ export class SkillManager extends Service implements SkillManagementService {
     for (const row of rows) {
       const entry = metadata.get(row.name);
       const owned = await this.installedRecord(row.name);
-      merged.push({ ...(entry ? { ...row, ...entry } : row), ...(owned?.title ? { title: owned.title } : {}) });
+      const tags = owned && Object.prototype.hasOwnProperty.call(owned, 'tags') ? owned.tags : entry?.categories;
+      merged.push({
+        ...(entry ? { ...row, ...entry } : row),
+        ...(owned?.title ? { title: owned.title } : {}),
+        ...(tags === undefined ? {} : { tags }),
+      });
     }
     return merged.sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -244,7 +264,12 @@ export class SkillManager extends Service implements SkillManagementService {
     const entry = metadata.get(detail.name);
     const owned = await this.installedRecord(detail.name);
     const withCatalog = entry ? { ...detail, ...entry } : detail;
-    return owned?.title ? { ...withCatalog, title: owned.title } : withCatalog;
+    const tags = owned && Object.prototype.hasOwnProperty.call(owned, 'tags') ? owned.tags : entry?.categories;
+    return {
+      ...withCatalog,
+      ...(owned?.title ? { title: owned.title } : {}),
+      ...(tags === undefined ? {} : { tags }),
+    };
   }
 
   private async readDetail(name: string, signal?: AbortSignal): Promise<ManagedSkillDetail | undefined> {
@@ -299,6 +324,7 @@ export class SkillManager extends Service implements SkillManagementService {
       if (request.title !== undefined && !await this.installedRecord(request.name)) throw new Error('skill/not-manageable');
       await this.atomicWrite(skillPath, request.document);
       if (request.title !== undefined) await this.rememberTitle(request.name, request.title);
+      if (request.tags !== undefined) await this.rememberTags(request.name, request.tags);
       const next = await this.detail(request.name);
       if (!next) throw new Error('skill/reload-failed');
       return next;
@@ -334,8 +360,9 @@ export class SkillManager extends Service implements SkillManagementService {
     if (current && current.name !== request.name) throw new Error('skill/name-mismatch');
     const validation = this.validateDocument(request.document, request.name);
     const updatedAt = new Date().toISOString();
-    const revision = digest(`${request.name}\0${request.scope ?? current?.scope ?? 'shared-agents'}\0${request.document}\0${updatedAt}`);
-    const draft: SkillDraft = { id, name: request.name, scope: request.scope ?? current?.scope ?? 'shared-agents', document: request.document, revision, updatedAt, validation };
+    const tags = request.tags !== undefined ? normalizeTags(request.tags) : current?.tags ?? [];
+    const revision = digest(`${request.name}\0${request.scope ?? current?.scope ?? 'shared-agents'}\0${request.document}\0${tags.join('\0')}\0${updatedAt}`);
+    const draft: SkillDraft = { id, name: request.name, scope: request.scope ?? current?.scope ?? 'shared-agents', document: request.document, tags, revision, updatedAt, validation };
     await this.writeJson(path, draft);
     return draft;
   }
@@ -345,7 +372,7 @@ export class SkillManager extends Service implements SkillManagementService {
     try {
       const value = JSON.parse(await readFile(this.draftPath(id), 'utf8')) as SkillDraft;
       if (value.id !== id || !skillNamePattern.test(value.name) || typeof value.document !== 'string' || typeof value.revision !== 'string') throw new Error('skill/invalid-draft');
-      return value;
+      return { ...value, tags: normalizeTags(value.tags) };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error('skill/draft-not-found');
       throw error;
@@ -369,6 +396,7 @@ export class SkillManager extends Service implements SkillManagementService {
         await this.atomicWrite(join(target, 'SKILL.md'), draft.document);
         const installed = await readFile(join(target, 'SKILL.md'), 'utf8');
         if (digest(installed) !== digest(draft.document) || !this.validateDocument(installed, draft.name).valid) throw new Error('skill/publish-verification-failed');
+        await this.rememberInstalled(draft.name, undefined, false, undefined, draft.tags);
         await unlink(this.draftPath(id));
         return { name: draft.name, state: 'enabled', path: target };
       } catch (error) {
@@ -472,7 +500,7 @@ export class SkillManager extends Service implements SkillManagementService {
         signal?.throwIfAborted();
         await rename(temporary, target);
         // Provenance plus the display name the user chose for this import.
-        await this.rememberInstalled(name, request.title, request.hidden, request.owner);
+        await this.rememberInstalled(name, request.title, request.hidden, request.owner, request.tags);
         return { name, state: 'enabled', path: target };
       } catch (error) {
         await rm(temporary, { recursive: true, force: true });
@@ -763,11 +791,13 @@ export class SkillManager extends Service implements SkillManagementService {
     } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
   }
 
-  private async rememberInstalled(name: string, title?: string, hidden?: boolean, owner?: string): Promise<void> {
+  private async rememberInstalled(name: string, title?: string, hidden?: boolean, owner?: string, tags?: readonly string[]): Promise<void> {
     const trimmed = title?.trim();
+    const normalizedTags = normalizeTags(tags);
     await this.writeJson(this.ownedPath(name), {
       name,
       ...(trimmed ? { title: trimmed } : {}),
+      ...(tags === undefined ? {} : { tags: normalizedTags }),
       ...(hidden ? { hidden: true } : {}),
       ...(owner ? { owner } : {}),
       installedAt: new Date().toISOString(),
@@ -789,6 +819,21 @@ export class SkillManager extends Service implements SkillManagementService {
     await this.writeJson(this.ownedPath(name), {
       name,
       ...(trimmed ? { title: trimmed } : {}),
+      ...(current.tags !== undefined ? { tags: current.tags } : {}),
+      ...(current.hidden ? { hidden: true } : {}),
+      ...(current.owner ? { owner: current.owner } : {}),
+      installedAt: current.installedAt,
+    } satisfies InstalledSkillRecord);
+  }
+
+  private async rememberTags(name: string, tags: readonly string[]): Promise<void> {
+    const current = await this.installedRecord(name);
+    if (!current) throw new Error('skill/not-manageable');
+    const normalizedTags = normalizeTags(tags);
+    await this.writeJson(this.ownedPath(name), {
+      name,
+      ...(current.title ? { title: current.title } : {}),
+      tags: normalizedTags,
       ...(current.hidden ? { hidden: true } : {}),
       ...(current.owner ? { owner: current.owner } : {}),
       installedAt: current.installedAt,
