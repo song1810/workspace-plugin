@@ -16,10 +16,15 @@ export function registerExpertExecutionGuard(ctx: Context): void {
     const membership = ctx.agentTeams.tryMembership(agent);
     const root = membership?.root ?? agent;
     const header = agent.session.header;
+    // The live preset is authoritative. A derived Session can keep an older
+    // expert value in its header after its root was dismissed or switched to a
+    // native preset; the root composition, not that stale header, decides
+    // whether this execution still needs an expert binding.
+    const rootPreset = ctx.agentPresets.composedPreset(root.ctx) ?? root.session.header.agentPreset;
     // A summoned expert can be dismissed before the first turn, which switches
     // the still-blank Session back to a native preset. Such a Session is no
     // longer an expert execution, so the binding no longer governs it.
-    if (!header.agentPreset?.startsWith('wd-exp-')) return;
+    if (!rootPreset?.startsWith('wd-exp-')) return;
     const actor = await ctx.workspaceIdentity.resolve({ sessionId: String(root.id) }, signal);
     let role;
     try {
@@ -36,7 +41,7 @@ export function registerExpertExecutionGuard(ctx: Context): void {
       if (unbound && creating && root === agent && !header.parentSession) return;
       throw error;
     }
-    if (role.binding.presetRevisionRef !== header.agentPreset) throw new ExpertsError('experts/conflict', '原生任务 preset 与固定专家组合不一致。');
+    if (role.binding.presetRevisionRef !== rootPreset) throw new ExpertsError('experts/conflict', '原生任务 preset 与固定专家组合不一致。');
     if (membership?.role === 'teammate') {
       if (header.parentSession !== root.id || header.cwd !== root.session.header.cwd) throw new ExpertsError('experts/conflict', '官方成员与主任务的父关系或工作区不一致。');
       const childActor = await ctx.workspaceIdentity.resolve({ sessionId: String(agent.id) }, signal);

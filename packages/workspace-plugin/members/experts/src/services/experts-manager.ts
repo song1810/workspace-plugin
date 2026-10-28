@@ -63,6 +63,7 @@ import { definitionDigest, normalizeDefinition, validateDefinition, teamDefiniti
 import { codePointLength, digestOf, shortDigest, sha256 } from '../domain/digest.js';
 import { DEFAULT_TEMPLATES } from '../domain/templates.js';
 import { assertUploadWithinLimit, buildExport, preflightPackage } from './portability.js';
+import { activeBoundSessionIds, bindingRowsForExperts } from './lifecycle.js';
 
 /**
  * The single Host domain service for experts (D04 / P1-02, expert module 0.1).
@@ -1251,6 +1252,25 @@ export class ExpertsManager extends Service implements ExpertsService {
       const owned = [...this.expertsTable().entries()]
         .filter(([, row]) => row.id === expertId || row.teamParentId === expertId)
         .map(([, row]) => row.id);
+      const ownedIds = new Set(owned);
+      const bindings = bindingRowsForExperts(this.bindingsTable().entries(), ownedIds);
+      const sessions = await this.ctx.sessionController.list({}, signal ?? AbortSignal.timeout(30_000));
+      // A blank draft is not a used conversation: deleting the expert may clear its
+      // stale preset so the next New Conversation starts in Standard mode.
+      const existingSessionIds = activeBoundSessionIds(
+        bindings.map(([, binding]) => binding),
+        sessions.items.map((row) => ({ sessionId: String(row.sessionId), blank: row.blank })),
+      );
+      if (existingSessionIds.length > 0) {
+        throw new ExpertsError(
+          'experts/in-use',
+          '该专家/专家团仍被会话使用，不能删除。请先删除相关会话。',
+          { expertId, sessionIds: existingSessionIds },
+        );
+      }
+      // Bindings for removed Sessions are historical residue; removing them lets a
+      // later new conversation fall back to Standard instead of executing unbound.
+      for (const [bindingKey] of bindings) await this.bindingsTable().delete(bindingKey);
       for (const ownedId of owned) {
         const ownedKey = keys.expert(ownedId);
         await this.expertsTable().delete(ownedKey);

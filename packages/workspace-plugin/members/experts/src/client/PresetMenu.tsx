@@ -1,7 +1,7 @@
 import * as React from 'react';
 import type { Context } from '@deepseek-ai/cordis';
 import type { ExpertManagementClient } from './management.js';
-import { isNativePreset, nativePresetRows, requireNativePreset } from './preset-policy.js';
+import { isNativePreset, isStaleExpertBinding, nativePresetRows, requireNativePreset, shouldClearInheritedExpert } from './preset-policy.js';
 
 /** Keep the native mount loader stable while always invoking the latest injected callback. */
 function StableNativePresetSeat(props: any) {
@@ -22,7 +22,7 @@ function StableNativePresetSeat(props: any) {
  * page stays the Harness owner's; expert presets remain guarded by the Host-side preset
  * checks, not by a second client page.
  */
-export function installExpertPresetMenu(ctx: Context, _management: ExpertManagementClient): void {
+export function installExpertPresetMenu(ctx: Context, management: ExpertManagementClient): void {
   const install = (key: string) => {
     let dispose: (() => void) | undefined;
     const ready = () => {
@@ -70,6 +70,24 @@ export function installExpertPresetMenu(ctx: Context, _management: ExpertManagem
         const standardId = state.options.find((row: any) => row.id === 'standard')?.id
           ?? state.options.find((row: any) => isNativePreset(row.id))?.id;
         const canCancel = blank && standardId !== undefined && standardId !== state.current;
+        const checkedSeat = React.useRef<string | undefined>(undefined);
+        React.useEffect(() => {
+          if (isNativePreset(state.current)) { checkedSeat.current = undefined; return; }
+          if (!shouldClearInheritedExpert({ blank, sessionId, standardId, current: state.current })) return;
+          if (!sessionId || !standardId) return;
+          const resetPresetId = standardId;
+          const seatKey = `${sessionId}:${state.current}`;
+          if (checkedSeat.current === seatKey) return;
+          checkedSeat.current = seatKey;
+          const abort = new AbortController();
+          void management.verifyBinding(sessionId, abort.signal).catch((error: unknown) => {
+            if (abort.signal.aborted || !isStaleExpertBinding(error)) return;
+            // A new conversation may clone the visible preset. Without a binding row it
+            // must return to the native preset before the first message is sent.
+            void props.select(resetPresetId).catch(() => { checkedSeat.current = undefined; });
+          });
+          return () => abort.abort();
+        }, [blank, sessionId, standardId, state.current]);
         return (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: 'inherit', color: 'inherit' }} title={name || '已召唤专家'}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><circle cx="12" cy="6" r="3"/><circle cx="5" cy="17" r="3"/><circle cx="19" cy="17" r="3"/><path d="M10 9 6.5 14M14 9l3.5 5M8 17h8"/></svg>
