@@ -139,6 +139,20 @@ export function SkillsPanel({ toggleNavigation, management, startSkillTask, star
     try { await startSkillTask('edit', skill.name); }
     catch (cause) { setError(messageOf(cause)); setCreating(false); }
   };
+  const toggleEnabled = async (skill: ManagedSkillSummary) => {
+    const enabled = skill.state !== 'enabled';
+    setBusy(true); setError('');
+    try {
+      await management.setEnabled(skill.name, enabled);
+      await refresh();
+      if (selected?.name === skill.name) {
+        const detail = await management.detail(skill.name);
+        setSelected(detail);
+        setSkillDocument(detail?.document ?? '');
+      }
+    } catch (cause) { setError(messageOf(cause)); }
+    finally { setBusy(false); }
+  };
   const exportSkill = async (skill: ManagedSkillSummary) => {
     setActionMenu(undefined); setError(''); setNotice('');
     try { const result = await management.downloadExport(skill.name); setNotice(`已导出「${result.fileName}」`); }
@@ -256,7 +270,7 @@ export function SkillsPanel({ toggleNavigation, management, startSkillTask, star
   const countsLine = <div role="status" aria-live="polite" className={error ? 'error counts' : notice ? 'notice counts' : 'muted counts'}>{busy ? '正在读取…' : error || notice || `共 ${skills.length} 个已安装技能 · 当前显示 ${view === 'installed' ? installedFiltered.length : filtered.length} 个`}</div>;
   const batchBar = <div className="batch-bar" role="toolbar" aria-label="批量管理技能"><span>已选择 {selectedNames.length} 项</span><Button tone="danger" className="danger" disabled={!selectedNames.length || busy} onClick={() => setConfirmBatchUninstall(true)}>卸载</Button></div>;
   const renderSkillCard = (skill: ManagedSkillSummary) => <article className={`card ${skill.state === 'disabled' ? 'disabled' : skill.state === 'invalid' ? 'invalid' : ''} ${actionMenu === skill.name ? 'menu-open' : ''}`} key={skill.name}>
-    <div className="card-top">{batchMode && skill.manageable ? <button className="batch-check" role="checkbox" aria-checked={selectedNames.includes(skill.name)} aria-label={`选择技能 ${skill.name}`} onClick={() => toggleBatchSelection(skill.name)}>{selectedNames.includes(skill.name) ? '✓' : ''}</button> : null}<button className="card-open" aria-label={`查看技能 ${skill.name}`} onClick={() => batchMode && skill.manageable ? toggleBatchSelection(skill.name) : void openDetail(skill.name)}><span className="card-title"><strong title={skill.name}>{skill.title ?? skill.name}</strong><small className="slug">{skill.name}</small></span></button>
+    <div className="card-top">{batchMode && skill.manageable ? <button className="batch-check" role="checkbox" aria-checked={selectedNames.includes(skill.name)} aria-label={`选择技能 ${skill.name}`} onClick={() => toggleBatchSelection(skill.name)}>{selectedNames.includes(skill.name) ? '✓' : ''}</button> : null}<button className="card-open" aria-label={`查看技能 ${skill.name}`} onClick={() => batchMode && skill.manageable ? toggleBatchSelection(skill.name) : void openDetail(skill.name)}><span className="card-title"><strong title={skill.name}>{skill.title ?? skill.name}</strong><small className="slug">{skill.name}</small></span></button>{!batchMode && skill.manageable && <button className="switch" role="switch" aria-checked={skill.state === 'enabled'} aria-label={`${skill.state === 'enabled' ? '停用' : '启用'}技能 ${skill.name}`} title={skill.state === 'enabled' ? '关闭后移出活动技能目录，不再进入模型上下文' : '重新启用技能'} disabled={busy || (skill.state !== 'enabled' && skill.state !== 'disabled')} onClick={() => void toggleEnabled(skill)} />}
     </div><p className="muted">{skill.localizedDescription ?? skill.description}</p><div className="card-foot"><button className="try" disabled={skill.state !== 'enabled'} onClick={() => void trial(skill.name)}>去试试</button>{!batchMode && skill.manageable && <div className="card-actions"><Button variant="ghost" size="sm" className="more-button" aria-label={`管理技能 ${skill.name}`} aria-haspopup="menu" aria-expanded={actionMenu === skill.name} onClick={() => setActionMenu(current => current === skill.name ? undefined : skill.name)}>•••</Button>{actionMenu === skill.name && <div className="card-menu" role="menu">
       <button role="menuitem" disabled={skill.state !== 'enabled'} onClick={() => void trial(skill.name)}>去试试</button>
       <button role="menuitem" disabled={creating} onClick={() => void editSkillInTask(skill)}>编辑</button>

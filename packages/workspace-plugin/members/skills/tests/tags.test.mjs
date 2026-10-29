@@ -47,6 +47,10 @@ test('skill tags persist through draft publication and can be edited or cleared'
       tags: [],
     });
     assert.deepEqual(detail.tags, []);
+    await ctx.workspaceSkills.setEnabled('tagged-skill', false);
+    assert.equal((await ctx.workspaceSkills.detail('tagged-skill')).state, 'disabled');
+    await ctx.workspaceSkills.setEnabled('tagged-skill', true);
+    assert.equal((await ctx.workspaceSkills.detail('tagged-skill')).state, 'enabled');
 
     const importedDocument = '---\nname: imported-tags\ndescription: Imported tag fixture\n---\nUse the imported fixture.\n';
     const upload = new File([importedDocument], 'imported-tags.md', { type: 'text/markdown' });
