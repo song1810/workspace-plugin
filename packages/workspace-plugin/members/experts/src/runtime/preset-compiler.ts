@@ -16,6 +16,7 @@ export const COMPILER_VERSION = 'workspace-expert-compiler/0.4-declarative-prese
 const PERSONA_MODULE = '@deepseek-ai/dsh-persona';
 const SKILL_FS_MODULE = '@deepseek-ai/dsh-skill-filesystem';
 const TOOL_SKILL_MODULE = '@deepseek-ai/dsh-tool-skill';
+const EXPERT_OWNED_ROWS = new Set(['persona', 'skill-filesystem']);
 
 const LEGACY_TEAM_TOOL_REPLACEMENTS: Readonly<Record<string, string>> = {
   workspace_expert_team_start: '官方 Team 已随当前会话建立（无需调用建团工具）',
@@ -99,11 +100,42 @@ export async function registerExpertPreset(ctx: Context, presetId: string, expec
   if (!pending.has(presetId)) {
     const definition = JSON.parse(text) as PresetDefinition;
     if (definition.id !== presetId) throw Object.assign(new Error('专家预设内容已变化，请重新发布。'), { code: 'experts/preset-drift' });
-    const promise = ctx.agentPresets.register(definition).then(dispose => { ctx.effect(() => dispose); });
+    let basePresetId = 'standard';
+    try {
+      const manifest = JSON.parse(await readFile(join(expertPresetDir(presetId), 'workspace-expert-manifest.json'), 'utf8')) as { basePresetId?: unknown };
+      if (typeof manifest.basePresetId === 'string' && manifest.basePresetId.trim()) basePresetId = manifest.basePresetId;
+    } catch { /* Older manifests did not persist the base name. */ }
+    const compatible = reconcileExpertPreset(ctx, definition, basePresetId);
+    const promise = ctx.agentPresets.register(compatible).then(dispose => { ctx.effect(() => dispose); });
     pending.set(presetId, promise);
     promise.catch(() => { pending!.delete(presetId); });
   }
   await pending.get(presetId);
+}
+
+/**
+ * Reconcile an immutable expert declaration with the current Harness standard
+ * preset. Expert presets freeze the whole standard composition at publication
+ * time; DSH upgrades can change tool schemas (for example subagent selection
+ * fields) while the expert persona and pinned skill directories stay valid.
+ * Keep those expert-owned rows and take every other row from the live base.
+ */
+export function reconcileExpertPreset(ctx: Context, definition: PresetDefinition, basePresetId = 'standard'): PresetDefinition {
+  const base = [...ctx.loader.entries()].find(entry =>
+    !entry.disabled
+    && entry.options.name === '@deepseek-ai/dsh-agent-preset'
+    && entry.options.config?.id === basePresetId);
+  const baseRows = base?.options.config?.plugins;
+  if (!Array.isArray(baseRows)) return definition;
+  const owned = new Map(definition.plugins
+    .filter(row => row.id !== undefined && EXPERT_OWNED_ROWS.has(row.id))
+    .map(row => [row.id as string, row]));
+  const plugins = JSON.parse(JSON.stringify(baseRows)) as PresetDefinition['plugins'];
+  const reconciled = plugins.map(row => row.id && owned.has(row.id) ? owned.get(row.id)! : row);
+  for (const row of definition.plugins) {
+    if (row.name === TOOL_SKILL_MODULE && !reconciled.some(item => item.id === row.id || item.name === row.name)) reconciled.push(row);
+  }
+  return { ...definition, plugins: reconciled };
 }
 
 export async function compileExpertPreset(ctx: Context, input: CompileInput): Promise<CompiledPreset> {
@@ -156,7 +188,7 @@ export async function compileExpertPreset(ctx: Context, input: CompileInput): Pr
     }
     await writeFile(join(staging, 'preset.json'), text, { flag: 'wx' });
     const compositionDigest = sha256(text);
-    await writeFile(join(staging, 'workspace-expert-manifest.json'), JSON.stringify({ inputDigest, compositionDigest }), { flag: 'wx' });
+    await writeFile(join(staging, 'workspace-expert-manifest.json'), JSON.stringify({ inputDigest, compositionDigest, basePresetId: input.basePresetId }), { flag: 'wx' });
     try { await rename(staging, presetDir); }
     catch (error) {
       if (!['EEXIST', 'ENOTEMPTY'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
