@@ -390,6 +390,10 @@ export interface SessionAccessBridgeConfig {
   readonly isolation?: RuntimeBindingRequest['isolation'];
 }
 
+interface SessionPresenceController {
+  readonly state: (request: { readonly sessionId: SessionId }, signal?: AbortSignal) => Promise<unknown>;
+}
+
 /** Trusted Host ingress for Workspace Session creation and resume. */
 export class SessionAccessBridge extends Service {
   static inject = ['sessionController', 'workspaceIdentity', 'workspaceAccess', 'workspaceAudit'];
@@ -409,7 +413,8 @@ export class SessionAccessBridge extends Service {
     if (request.sessionId !== undefined && !this.ctx.workspaceAccess.sessionOwner(String(sessionId))) {
       let exists = false;
       try {
-        await this.ctx.sessionController.inspect(sessionId, signal);
+        const controller = this.ctx.sessionController as typeof this.ctx.sessionController & SessionPresenceController;
+        await controller.state({ sessionId }, signal);
         exists = true;
       } catch (error) {
         if (!(error instanceof ApiSessionNotFound) && !hasErrorCode(error, 'session/not-found')) throw error;

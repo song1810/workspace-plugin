@@ -1,3 +1,7 @@
+## 0.2.9 — 2026-11-05
+
+- 适配 DeepSeek Harness 0.2.2 及以上的 Session Controller：使用 `state({ sessionId })` 检查会话，修复召唤专家时提示“专家操作失败，请重试”的问题。
+
 ## 0.2.8 — 2026-11-05
 
 - 适配 DeepSeek Harness 0.2.2-rc.1 的 Agent preset 组合：旧专家预设注册时改用当前标准模式的工具行，保留专家人格与锁定技能目录。
