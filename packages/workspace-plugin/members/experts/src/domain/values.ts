@@ -36,17 +36,20 @@ export const EXPERT_LIMITS = Object.freeze({
   listMaxLimit: 100,
 } as const);
 
-/** User-facing tags accept Han characters only; whitespace and every other script are removed. */
-export function sanitizeChineseTag(value: string): string {
-  return Array.from(value.replace(/[^\p{Script=Han}]/gu, '')).slice(0, EXPERT_LIMITS.tagCharsMax).join('');
+/** User-facing tags accept Chinese, English, digits and common word separators. */
+export function sanitizeBilingualTag(value: string): string {
+  return Array.from(value.replace(/[^\p{Script=Han}\p{Script=Latin}\p{Nd} _-]/gu, ''))
+    .slice(0, EXPERT_LIMITS.tagCharsMax)
+    .join('');
 }
 
-/** Whether a complete, user-facing tag is non-empty Chinese text within the configured limit. */
-export function isChineseTag(value: string): boolean {
+/** Whether a complete tag is non-empty Chinese/English text within the configured limit. */
+export function isBilingualTag(value: string): boolean {
   const characters = Array.from(value);
   return characters.length > 0
     && characters.length <= EXPERT_LIMITS.tagCharsMax
-    && /^\p{Script=Han}+$/u.test(value);
+    && value === value.trim()
+    && /^[\p{Script=Han}\p{Script=Latin}\p{Nd} _-]+$/u.test(value);
 }
 
 /** Domain error carrying a stable code and optional public details. Never leaks other owners' paths/content. */

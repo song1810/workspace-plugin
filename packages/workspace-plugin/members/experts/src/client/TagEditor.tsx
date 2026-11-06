@@ -1,7 +1,7 @@
 import { Button, Input, Select } from 'workspace-ui';
 import * as React from 'react';
 import { useRef } from 'react';
-import { EXPERT_LIMITS, isChineseTag, sanitizeChineseTag } from '../shared.js';
+import { EXPERT_LIMITS, isBilingualTag, sanitizeBilingualTag } from '../shared.js';
 
 export function TagEditor({
   tags,
@@ -17,35 +17,35 @@ export function TagEditor({
   readonly max?: number;
 }) {
   const composing = useRef<number | null>(null);
-  const available = options.filter(option => isChineseTag(option) && !tags.includes(option));
+  const available = options.filter(option => isBilingualTag(option) && !tags.includes(option));
   const add = (tag: string) => {
-    const value = sanitizeChineseTag(tag.trim());
-    if (!isChineseTag(value) || tags.includes(value) || tags.length >= max) return;
+    const value = sanitizeBilingualTag(tag.trim());
+    if (!isBilingualTag(value) || tags.includes(value) || tags.length >= max) return;
     onChange([...tags, value]);
   };
   return <div className="tag-editor">
-    <div className="tag-editor-head"><strong>{label}</strong><small>仅支持中文，最多 {max} 个，每个 ≤{EXPERT_LIMITS.tagCharsMax} 字</small></div>
+    <div className="tag-editor-head"><strong>{label}</strong><small>支持中英文，最多 {max} 个，每个 ≤{EXPERT_LIMITS.tagCharsMax} 字</small></div>
     <div className="tag-editor-rows">
-      {tags.map((tag, index) => <div className="tag-editor-row" key={`${tag}-${index}`}>
+      {tags.map((tag, index) => <div className="tag-editor-row" key={index}>
         <Input value={tag} maxLength={EXPERT_LIMITS.tagCharsMax * 2} aria-label={`${label} ${index + 1}`}
-          placeholder="请输入中文标签" title="仅支持中文"
+          placeholder="请输入中文或英文标签" title="支持中文、英文和数字"
           onCompositionStart={() => { composing.current = index; }}
           onCompositionEnd={event => {
             composing.current = null;
-            const value = sanitizeChineseTag(event.currentTarget.value);
+            const value = sanitizeBilingualTag(event.currentTarget.value).trim();
             onChange(tags.map((item, i) => i === index ? value : item));
           }}
           onBlur={event => {
             if (composing.current !== index) return;
             composing.current = null;
-            const value = sanitizeChineseTag(event.currentTarget.value);
+            const value = sanitizeBilingualTag(event.currentTarget.value).trim();
             onChange(tags.map((item, i) => i === index ? value : item));
           }}
           onChange={event => {
             const raw = event.currentTarget.value;
             const value = composing.current === index
               ? Array.from(raw).slice(0, EXPERT_LIMITS.tagCharsMax * 2).join('')
-              : sanitizeChineseTag(raw);
+              : sanitizeBilingualTag(raw);
             onChange(tags.map((item, i) => i === index ? value : item));
           }} />
         <Button variant="ghost" size="sm" className="remove" aria-label={`删除标签 ${index + 1}`}

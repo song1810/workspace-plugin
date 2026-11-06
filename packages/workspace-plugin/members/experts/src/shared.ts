@@ -11,6 +11,6 @@ export {
   EXPERT_LIMITS,
   ExpertsError,
   actionAccess,
-  isChineseTag,
-  sanitizeChineseTag,
+  isBilingualTag,
+  sanitizeBilingualTag,
 } from './domain/values.js';
