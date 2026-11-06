@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client';
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import { Icon, Modal, type IconName } from 'workspace-ui';
-import { EXPERT_LIMITS, type ExpertAvailability, type ExpertSummary } from '../shared.js';
+import { EXPERT_LIMITS, isChineseTag, type ExpertAvailability, type ExpertSummary } from '../shared.js';
 import type { ExpertManagementClient } from './management.js';
 import { ExpertDetailModal } from './ExpertDetailModal.js';
 import { expertDraftId } from '../domain/navigation.js';
@@ -140,8 +140,8 @@ export function ExpertsPanel({ toggleNavigation, management, openCapability, has
     if (stateFilter === 'published') return items.filter(item => item.publishedRevisionRef !== undefined);
     return items;
   }, [items, view, stateFilter]);
-  const allTags = useMemo(() => [...new Set(items.flatMap(item => item.userTags ?? []))].sort((a, b) => a.localeCompare(b)), [items]);
-  const visibleTags = useMemo(() => [...new Set(baseVisible.flatMap(item => item.userTags ?? []))].sort((a, b) => a.localeCompare(b)), [baseVisible]);
+  const allTags = useMemo(() => [...new Set(items.flatMap(item => item.userTags ?? []).filter(isChineseTag))].sort((a, b) => a.localeCompare(b)), [items]);
+  const visibleTags = useMemo(() => [...new Set(baseVisible.flatMap(item => item.userTags ?? []).filter(isChineseTag))].sort((a, b) => a.localeCompare(b)), [baseVisible]);
   useEffect(() => { if (tagFilter !== 'all' && !visibleTags.includes(tagFilter)) setTagFilter('all'); }, [tagFilter, visibleTags]);
   useEffect(() => { setTagFilter('all'); }, [view, kind, debounced, stateFilter, originFilter]);
   const visible = tagFilter === 'all' ? baseVisible : baseVisible.filter(item => item.userTags?.includes(tagFilter));
@@ -288,7 +288,7 @@ export function ExpertsPanel({ toggleNavigation, management, openCapability, has
                   {summary.canEdit && !draft && <button role="menuitem" onClick={() => { void editInConversation(summary.id); }}>编辑</button>}
                   <button role="menuitem" disabled={acting} onClick={() => void openDirectory(summary)}>打开文件夹</button>
                   <button role="menuitem" disabled={acting} onClick={() => void exportExpert(summary)}>导出</button>
-                  <button role="menuitem" disabled={acting} onClick={() => { setActionMenu(undefined); setRename({ id: summary.id, value: summary.displayName ?? '', tags: [...(summary.userTags ?? [])] }); }}>设置显示名称</button>
+                  <button role="menuitem" disabled={acting} onClick={() => { setActionMenu(undefined); setRename({ id: summary.id, value: summary.displayName ?? '', tags: (summary.userTags ?? []).filter(isChineseTag) }); }}>设置显示名称</button>
                   {summary.canManage && summary.availability === 'disabled' && <button role="menuitem" disabled={acting} onClick={() => void setAvailability(summary, 'enabled')}>启用</button>}
 
                   {summary.canManage && <button className="danger" role="menuitem" disabled={acting} onClick={() => { setActionMenu(undefined); setRemoveTarget(summary.id); }}>卸载</button>}

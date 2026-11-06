@@ -14,6 +14,8 @@ import {
   ExpertsError,
   actionAccess,
   assertActorContext,
+  isChineseTag,
+  sanitizeChineseTag,
 } from '../domain/values.js';
 import type {
   AccessService,
@@ -104,8 +106,8 @@ function normalizeUserTags(tags: readonly string[] | undefined): string[] {
   const result: string[] = [];
   const seen = new Set<string>();
   for (const raw of tags ?? []) {
-    const tag = raw.trim();
-    if (!tag || tag.length > 20 || seen.has(tag)) continue;
+    const tag = sanitizeChineseTag(raw.trim());
+    if (!isChineseTag(tag) || seen.has(tag)) continue;
     seen.add(tag);
     result.push(tag);
     if (result.length >= EXPERT_LIMITS.tagsMax) break;

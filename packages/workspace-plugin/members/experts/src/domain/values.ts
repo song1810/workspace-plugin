@@ -25,6 +25,7 @@ export const EXPERT_LIMITS = Object.freeze({
   descriptionMax: 300,
   proseMax: 16000,
   tagsMax: 8,
+  tagCharsMax: 20,
   examplesMax: 6,
   skillRequirementsMax: 32,
   futureRequirementsMax: 32,
@@ -34,6 +35,19 @@ export const EXPERT_LIMITS = Object.freeze({
   listDefaultLimit: 50,
   listMaxLimit: 100,
 } as const);
+
+/** User-facing tags accept Han characters only; whitespace and every other script are removed. */
+export function sanitizeChineseTag(value: string): string {
+  return Array.from(value.replace(/[^\p{Script=Han}]/gu, '')).slice(0, EXPERT_LIMITS.tagCharsMax).join('');
+}
+
+/** Whether a complete, user-facing tag is non-empty Chinese text within the configured limit. */
+export function isChineseTag(value: string): boolean {
+  const characters = Array.from(value);
+  return characters.length > 0
+    && characters.length <= EXPERT_LIMITS.tagCharsMax
+    && /^\p{Script=Han}+$/u.test(value);
+}
 
 /** Domain error carrying a stable code and optional public details. Never leaks other owners' paths/content. */
 export class ExpertsError extends Error {

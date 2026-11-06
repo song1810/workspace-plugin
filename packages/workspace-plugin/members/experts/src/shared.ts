@@ -7,4 +7,10 @@
 // declaration to dist/shared.d.ts (re-exporting these values) so installed types
 // need no workspace.
 export type * from 'workspace-contracts/experts';
-export { EXPERT_LIMITS, ExpertsError, actionAccess } from './domain/values.js';
+export {
+  EXPERT_LIMITS,
+  ExpertsError,
+  actionAccess,
+  isChineseTag,
+  sanitizeChineseTag,
+} from './domain/values.js';
